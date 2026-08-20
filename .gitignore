@@ -1,0 +1,21 @@
+# --- colcon / ROS 2 workspace build artifacts ---
+build/
+install/
+log/
+
+# --- ROS / Gazebo runtime ---
+*.bag
+*.db3
+*.active
+.gazebo/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- Editor / OS ---
+*.swp
+*~
+.DS_Store
