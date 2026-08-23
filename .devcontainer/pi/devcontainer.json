@@ -1,0 +1,52 @@
+{
+    // Raspberry Pi 5 variant. Open with:
+    //   F1 -> "Dev Containers: Reopen in Container" -> "MyBot ROS 2 Humble (Pi 5)"
+    //
+    // Pins the CORE image, not -desktop. ros-humble-desktop-full and
+    // ros-humble-gazebo-ros-pkgs have no arm64 builds, so RViz and Gazebo
+    // cannot run here. Run those on the workstation and talk to the robot
+    // over DDS. See Dockerfile.desktop in ros2-humble-dev for the reasoning.
+    "name": "MyBot ROS 2 Humble (Pi 5)",
+    "image": "ghcr.io/mjwoolley/ros2-humble-dev:0.2.0",
+    "remoteUser": "ros",
+
+    "workspaceFolder": "/workspace",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+
+    "runArgs": [
+        // host networking + host IPC so DDS can discover the workstation
+        "--network=host",
+        "--ipc=host",
+
+        // Motor controller. serial_motor_demo/driver.py defaults to
+        // /dev/ttyUSB0; override with -p serial_port:=... if yours differs.
+        //
+        // NOTE: the device must exist when the container starts, or Docker
+        // refuses to launch it. If you boot the Pi with the controller
+        // unplugged, either plug it in before reopening the container or
+        // comment this line out for that session.
+        "--device=/dev/ttyUSB0",
+
+        // The `ros` user is not in dialout, so it cannot open the port
+        // without this. Assumes the container's dialout GID matches the
+        // host's (both 20 on Debian/Ubuntu, including Raspberry Pi OS).
+        "--group-add=dialout"
+    ],
+
+    // Deliberately absent vs the workstation config:
+    //   --gpus=all          no NVIDIA on the Pi
+    //   DISPLAY / X11 mount headless; nothing here draws a window
+    "containerEnv": {},
+
+    "customizations": {
+        "vscode": {
+            // cpptools is dropped on purpose: mybot_description ships no C++
+            // sources, and indexing the ROS headers is the single heaviest
+            // thing you can ask a Pi to do in the background.
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance"
+            ]
+        }
+    }
+}
