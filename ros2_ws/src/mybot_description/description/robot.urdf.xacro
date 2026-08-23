@@ -12,4 +12,6 @@
       <xacro:include filename="gazebo_control.xacro" />
    </xacro:if>
 
+   <xacro:include filename="lidar.xacro" />
+
 </robot>
