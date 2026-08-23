@@ -1,6 +1,6 @@
 {
     "name": "MyBot ROS 2 Humble",
-    "image": "ghcr.io/mjwoolley/ros2-humble-dev:0.1.0",
+    "image": "ghcr.io/mjwoolley/ros2-humble-dev:0.2.0-desktop",
     "remoteUser": "ros",
 
     "workspaceFolder": "/workspace",
