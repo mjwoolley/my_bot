@@ -18,7 +18,9 @@ def generate_launch_description():
 
     # Use xacro to process the file
     xacro_file = os.path.join(get_package_share_directory(pkg_name),file_subpath)
-    robot_description_raw = xacro.process_file(xacro_file).toxml()
+    # use_sim pulls in gazebo_control.xacro, which the description omits by default
+    robot_description_raw = xacro.process_file(
+        xacro_file, mappings={'use_sim': 'true'}).toxml()
 
 
     # Configure the node

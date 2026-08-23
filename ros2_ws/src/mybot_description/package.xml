@@ -3,19 +3,17 @@
 <package format="3">
   <name>mybot_description</name>
   <version>0.0.0</version>
-  <description>URDF/Xacro description, RViz configs, Gazebo worlds and launch files for mybot.</description>
+  <description>URDF/Xacro description and headless launch files for mybot. Arm64-safe: no Gazebo or GUI dependencies, so this package installs on the Pi.</description>
   <maintainer email="mwoolley2@gmail.com">mwoolley2</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <!-- Runtime dependencies used by the launch files / description -->
+  <!-- Runtime dependencies used by the launch files / description.
+       Everything here has an arm64 build. Gazebo and RViz deps live in
+       mybot_gazebo so that `rosdep install` succeeds on the Pi. -->
   <exec_depend>xacro</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
-  <exec_depend>joint_state_publisher_gui</exec_depend>
-  <exec_depend>rviz2</exec_depend>
-  <exec_depend>gazebo_ros</exec_depend>
-  <exec_depend>gazebo_ros_pkgs</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 

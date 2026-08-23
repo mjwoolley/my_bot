@@ -1,7 +1,15 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro"  name="robot">
 
+   <!-- Gazebo plugin tags are inert outside simulation, but the Pi has no
+        Gazebo at all, so keep them out of the real robot's URDF.
+        mybot_gazebo's launch file passes use_sim:=true. -->
+   <xacro:arg name="use_sim" default="false"/>
+
    <xacro:include filename="robot_core.xacro" />
-   <xacro:include filename="gazebo_control.xacro" />
+
+   <xacro:if value="$(arg use_sim)">
+      <xacro:include filename="gazebo_control.xacro" />
+   </xacro:if>
 
 </robot>
