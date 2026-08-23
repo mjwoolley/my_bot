@@ -1,7 +1,0 @@
-# External ROS 2 packages required by this workspace.
-# Import with:  cd ros2_ws && vcs import src < src.repos
-repositories:
-  serial_motor_demo:
-    type: git
-    url: https://github.com/joshnewans/serial_motor_demo.git
-    version: da60760df16b868f2ef487e485e480d28b7d46db

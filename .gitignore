@@ -19,6 +19,3 @@ __pycache__/
 *.swp
 *~
 .DS_Store
-
-# --- External sources (see ros2_ws/src.repos, import with vcstool) ---
-ros2_ws/src/serial_motor_demo/
