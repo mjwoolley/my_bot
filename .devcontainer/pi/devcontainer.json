@@ -57,7 +57,8 @@
             // thing you can ask a Pi to do in the background.
             "extensions": [
                 "ms-python.python",
-                "ms-python.vscode-pylance"
+                "ms-python.vscode-pylance",
+                "anthropic.claude-code"
             ]
         }
     }
