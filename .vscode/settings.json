@@ -1,3 +1,11 @@
 {
-    "cmake.sourceDirectory": "/workspace/ros2_ws/src/mybot_description"
+    "cmake.sourceDirectory": "/workspace/ros2_ws/src/mybot_description",
+
+    // Periodically update remote-tracking refs so the status bar shows an
+    // accurate ahead/behind count. This only fetches - it never merges, so
+    // pulling stays a deliberate act. Set here rather than in either
+    // devcontainer.json so the Pi, the workstation, and both containers
+    // share one setting.
+    "git.autofetch": true,
+    "git.autofetchPeriod": 180
 }
