@@ -1,0 +1,4 @@
+Pi-local. mybot_gazebo depends on gazebo_ros and gazebo_ros_pkgs, which have
+no arm64 build, so this package is not usable on the robot. This file makes a
+plain `colcon build` skip it instead of needing --packages-skip every time.
+Not committed - the workstation must still build this package.

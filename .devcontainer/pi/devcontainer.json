@@ -18,14 +18,26 @@
         "--network=host",
         "--ipc=host",
 
-        // Motor controller. serial_motor_demo/driver.py defaults to
-        // /dev/ttyUSB0; override with -p serial_port:=... if yours differs.
-        //
-        // NOTE: the device must exist when the container starts, or Docker
-        // refuses to launch it. If you boot the Pi with the controller
-        // unplugged, either plug it in before reopening the container or
-        // comment this line out for that session.
+        // Motor controller (CH340, 1a86:7523). serial_motor_demo/driver.py
+        // defaults to /dev/ttyUSB0; override with -p serial_port:=... if
+        // yours differs.
         "--device=/dev/ttyUSB0",
+
+        // RPLIDAR C1 (CP2102N, 10c4:ea60). Passed by udev symlink rather than
+        // /dev/ttyUSBn: the lidar and the motor controller are handed ttyUSB0
+        // and ttyUSB1 in enumeration order, so the numbers can swap between
+        // boots. Create the symlink ON THE HOST (udev does not run in the
+        // container) with rplidar_ros/scripts/create_udev_rules.sh, then:
+        //   ros2 launch rplidar_ros rplidar_c1_launch.py \
+        //     serial_port:=/dev/rplidar frame_id:=laser_frame
+        // frame_id is required: the launch file defaults to `laser`, but
+        // lidar.xacro publishes the link as `laser_frame`.
+        "--device=/dev/rplidar",
+
+        // NOTE: both devices must exist when the container starts, or Docker
+        // refuses to launch it. If you boot the Pi with either one unplugged,
+        // plug it in before reopening the container, or comment out that line
+        // for the session.
 
         // The `ros` user is not in dialout, so it cannot open the port
         // without this. Assumes the container's dialout GID matches the
