@@ -3,6 +3,16 @@
     "image": "ghcr.io/mjwoolley/ros2-humble-dev:0.2.0-desktop",
     "remoteUser": "ros",
 
+    // Runs on the HOST before the container starts. The X server demands a
+    // MIT-MAGIC-COOKIE, and the container has no ~/.Xauthority to offer one
+    // from -- only /workspace is bind-mounted, not $HOME. Granting our own
+    // uid is enough: --network=host with no userns remap means the container's
+    // ros (1000) reaches the socket as host uid 1000.
+    //
+    // xhost grants do not survive an X server restart, so this has to re-run
+    // per session rather than being done once by hand.
+    "initializeCommand": "xhost +SI:localuser:$(id -un) || true",
+
     "workspaceFolder": "/workspace",
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
 
