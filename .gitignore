@@ -3,6 +3,11 @@ build/
 install/
 log/
 
+# Per-machine marker telling colcon to skip a package. The Pi uses one in
+# mybot_gazebo (gazebo_ros has no arm64 build); the workstation must still
+# build that package, so this stays local to each machine.
+COLCON_IGNORE
+
 # --- ROS / Gazebo runtime ---
 *.bag
 *.db3
