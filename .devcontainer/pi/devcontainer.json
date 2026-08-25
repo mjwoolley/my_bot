@@ -52,7 +52,7 @@
 
     "customizations": {
         "vscode": {
-            // cpptools is dropped on purpose: mybot_description ships no C++
+            // cpptools is dropped on purpose: mybot ships no C++
             // sources, and indexing the ROS headers is the single heaviest
             // thing you can ask a Pi to do in the background.
             "extensions": [

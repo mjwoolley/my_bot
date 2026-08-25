@@ -10,10 +10,10 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <!-- The robot description this package simulates -->
-  <exec_depend>mybot_description</exec_depend>
+  <exec_depend>mybot</exec_depend>
 
   <!-- amd64 only. These are the keys that make `rosdep install` fail on arm64,
-       which is the whole reason they live here and not in mybot_description. -->
+       which is the whole reason they live here and not in mybot. -->
   <exec_depend>gazebo_ros</exec_depend>
   <exec_depend>gazebo_ros_pkgs</exec_depend>
 
