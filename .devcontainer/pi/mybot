@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# mybot -- open a shell in the ROS 2 container, starting it if necessary.
+#
+# The original of this script lived only in ~/.local/bin on the old Pi and was
+# lost in the Raspberry Pi OS migration (the Phase 0 backup took
+# ~/.local/share but not ~/.local/bin). It lives in the repo now.
+#
+# Install:
+#   ln -sf "$PWD/.devcontainer/pi/mybot" ~/.local/bin/mybot
+#
+# Usage:
+#   mybot              open a shell (starts the container if stopped/absent)
+#   mybot run CMD...   run one command in the container, then exit
+#   mybot status       container state and device/mount summary
+#   mybot start        start or create, do not attach
+#   mybot stop         stop the container (does not delete it)
+#   mybot restart      recreate from start-container.sh, then attach
+#   mybot logs         docker logs
+set -euo pipefail
+
+NAME=${NAME:-mybot-pi}
+HERE=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
+STARTER="$HERE/start-container.sh"
+
+exists()  { docker inspect "$NAME" >/dev/null 2>&1; }
+running() { [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" = "true" ]; }
+
+ensure_up() {
+    if running; then return 0; fi
+    if exists; then
+        echo "Starting existing container '$NAME'..." >&2
+        docker start "$NAME" >/dev/null
+    else
+        echo "No container '$NAME'. Creating from start-container.sh..." >&2
+        [ -x "$STARTER" ] || { echo "mybot: $STARTER missing or not executable" >&2; exit 1; }
+        "$STARTER"
+    fi
+    # A recreated container has a fresh writable layer, so the apt packages
+    # installed by setup-camera-ws.sh are gone even though camera_ws itself
+    # survives on the bind mount. Say so rather than letting camera_node fail
+    # with a missing shared library later.
+    if ! docker exec "$NAME" sh -c '[ -e /usr/lib/*/libgnutls.so* ]' 2>/dev/null; then
+        echo "NOTE: container layer is fresh -- if the camera is needed, run:" >&2
+        echo "      bash /workspace/.devcontainer/pi/setup-camera-ws.sh" >&2
+    fi
+}
+
+case "${1:-shell}" in
+    shell)
+        ensure_up
+        exec docker exec -it "$NAME" bash
+        ;;
+    run)
+        shift
+        [ $# -gt 0 ] || { echo "mybot run: need a command" >&2; exit 2; }
+        ensure_up
+        exec docker exec -it "$NAME" bash -lc "$*"
+        ;;
+    start)
+        ensure_up
+        docker ps --filter "name=$NAME" --format '{{.Names}}  {{.Status}}'
+        ;;
+    stop)
+        exists || { echo "No container '$NAME'." >&2; exit 1; }
+        docker stop "$NAME" >/dev/null && echo "Stopped $NAME."
+        ;;
+    restart)
+        [ -x "$STARTER" ] || { echo "mybot: $STARTER missing" >&2; exit 1; }
+        "$STARTER"
+        exec docker exec -it "$NAME" bash
+        ;;
+    logs)
+        shift
+        exec docker logs "${@:---tail=50}" "$NAME"
+        ;;
+    status)
+        if ! exists; then echo "container : absent"; exit 0; fi
+        printf 'container : %s\n' "$(docker inspect -f '{{.State.Status}}' "$NAME")"
+        printf 'image     : %s\n' "$(docker inspect -f '{{.Config.Image}}' "$NAME")"
+        printf 'devices   : %s\n' "$(docker inspect -f '{{len .HostConfig.Devices}}' "$NAME")"
+        printf 'udev mount: %s\n' \
+            "$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/run/udev"}}yes{{end}}{{end}}' "$NAME" | grep -q yes && echo yes || echo "NO -- camera will not enumerate")"
+        printf 'init      : %s\n' "$(docker inspect -f '{{.HostConfig.Init}}' "$NAME")"
+        if running; then
+            echo "--- serial symlinks inside ---"
+            docker exec "$NAME" ls -l /dev/arduino /dev/motor /dev/rplidar 2>&1 | sed 's/^/  /'
+        fi
+        ;;
+    -h|--help|help)
+        sed -n '2,20p' "$(readlink -f "${BASH_SOURCE[0]}")" | sed 's/^# \{0,1\}//'
+        ;;
+    *)
+        echo "mybot: unknown command '$1' (try: mybot help)" >&2
+        exit 2
+        ;;
+esac
