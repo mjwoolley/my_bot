@@ -6,6 +6,15 @@
     // ros-humble-gazebo-ros-pkgs have no arm64 builds, so RViz and Gazebo
     // cannot run here. Run those on the workstation and talk to the robot
     // over DDS. See Dockerfile.desktop in ros2-humble-dev for the reasoning.
+    //
+    // HOST: Raspberry Pi OS Trixie (Debian 13). Verified working 2026-08-28
+    // with the IMX500 publishing /camera/image_raw at 30 Hz.
+    //
+    // This device list is long and every entry must exist or Docker refuses
+    // to start the container. `.devcontainer/pi/start-container.sh` does the
+    // same thing but GENERATES the list from what is actually present, which
+    // is the more robust path when something is unplugged. Prefer it when
+    // this file fights you.
     "name": "MyBot ROS 2 Humble (Pi 5)",
     "image": "ghcr.io/mjwoolley/ros2-humble-dev:0.2.0",
     "remoteUser": "ros",
@@ -13,36 +22,117 @@
     "workspaceFolder": "/workspace",
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
 
+    "mounts": [
+        // libcamera enumerates cameras through udev. Without this the device
+        // nodes are all visible and readable and libcamera still reports
+        // "no cameras available" -- it never looks at them. This single line
+        // is the difference between a working camera and a silent failure.
+        "source=/run/udev,target=/run/udev,type=bind,readonly"
+    ],
+
     "runArgs": [
         // host networking + host IPC so DDS can discover the workstation
         "--network=host",
         "--ipc=host",
 
-        // Motor controller (CH340, 1a86:7523). serial_motor_demo/driver.py
-        // defaults to /dev/ttyUSB0; override with -p serial_port:=... if
-        // yours differs.
-        "--device=/dev/ttyUSB0",
+        // PID 1 is a long-lived sleep, which does not reap children. Without
+        // an init, every camera_node you stop leaves a zombie behind.
+        "--init",
 
-        // RPLIDAR C1 (CP2102N, 10c4:ea60). Passed by udev symlink rather than
-        // /dev/ttyUSBn: the lidar and the motor controller are handed ttyUSB0
-        // and ttyUSB1 in enumeration order, so the numbers can swap between
-        // boots. Create the symlink ON THE HOST (udev does not run in the
-        // container) with rplidar_ros/scripts/create_udev_rules.sh, then:
+        // ---- Serial devices ----------------------------------------------
+        // Two physical devices, five names. Docker resolves a --device
+        // symlink on the host and recreates a real node inside the container
+        // under the given name, so each alias becomes its own node pointing
+        // at the same major:minor:
+        //
+        //   /dev/arduino  /dev/motor  /dev/ttyUSB1   -> CH340,   1a86:7523
+        //   /dev/rplidar  /dev/ttyUSB0               -> CP2102N, 10c4:ea60
+        //
+        // The symlinks come from udev rules on the HOST, now tracked in this
+        // repo at .devcontainer/pi/udev/. Install them before first use:
+        //   sudo cp .devcontainer/pi/udev/*.rules /etc/udev/rules.d/
+        //   sudo udevadm control --reload-rules && sudo udevadm trigger
+        //
+        // PREFER the stable names in commands -- ttyUSBn ordering can swap
+        // between boots. They are passed only because upstream defaults
+        // hardcode /dev/ttyUSB0:
         //   ros2 launch rplidar_ros rplidar_c1_launch.py \
         //     serial_port:=/dev/rplidar frame_id:=laser_frame
+        //   ros2 run serial_motor_demo driver --ros-args \
+        //     -p serial_port:=/dev/motor -p baud_rate:=57600
         // frame_id is required: the launch file defaults to `laser`, but
         // lidar.xacro publishes the link as `laser_frame`.
+        "--device=/dev/arduino",
+        "--device=/dev/motor",
         "--device=/dev/rplidar",
+        "--device=/dev/ttyUSB0",
+        "--device=/dev/ttyUSB1",
 
-        // NOTE: both devices must exist when the container starts, or Docker
-        // refuses to launch it. If you boot the Pi with either one unplugged,
-        // plug it in before reopening the container, or comment out that line
-        // for the session.
+        // ---- Camera: dma_heap ---------------------------------------------
+        // libcamera allocates frame buffers here. Without these it
+        // enumerates the sensor and then fails on first capture.
+        "--device=/dev/dma_heap/linux,cma",
+        "--device=/dev/dma_heap/system",
 
-        // The `ros` user is not in dialout, so it cannot open the port
-        // without this. Assumes the container's dialout GID matches the
-        // host's (both 20 on Debian/Ubuntu, including Raspberry Pi OS).
-        "--group-add=dialout"
+        // ---- Camera: media devices ----------------------------------------
+        // media0 + media1 are `pispbe` (the Pi 5 ISP), media2 is `rp1-cfe`
+        // (the CSI front-end the sensor sits behind). libcamera pairs them:
+        //   "Registered camera ... imx500 to CFE device /dev/media2
+        //    and ISP device /dev/media0 using PiSP variant BCM2712_D0"
+        // media3 is rpi-hevc-dec, the video decoder -- deliberately NOT
+        // passed. libcamera logs one ERROR line about failing to open it and
+        // then skips it; that message is expected and harmless.
+        "--device=/dev/media0",
+        "--device=/dev/media1",
+        "--device=/dev/media2",
+
+        // ---- Camera: rp1-cfe v4l2 nodes (CSI capture, stats, config) ------
+        "--device=/dev/video0",
+        "--device=/dev/video1",
+        "--device=/dev/video2",
+        "--device=/dev/video3",
+        "--device=/dev/video4",
+        "--device=/dev/video5",
+        "--device=/dev/video6",
+        "--device=/dev/video7",
+
+        // ---- Camera: pispbe v4l2 nodes (ISP input/output/config) ----------
+        "--device=/dev/video20",
+        "--device=/dev/video21",
+        "--device=/dev/video22",
+        "--device=/dev/video23",
+        "--device=/dev/video24",
+        "--device=/dev/video25",
+        "--device=/dev/video26",
+        "--device=/dev/video27",
+        "--device=/dev/video28",
+        "--device=/dev/video29",
+        "--device=/dev/video30",
+        "--device=/dev/video31",
+        "--device=/dev/video32",
+        "--device=/dev/video33",
+        "--device=/dev/video34",
+        "--device=/dev/video35",
+
+        // ---- Camera: subdevs (csi2, pisp-fe, imx500 sensor) ---------------
+        "--device=/dev/v4l-subdev0",
+        "--device=/dev/v4l-subdev1",
+        "--device=/dev/v4l-subdev2",
+
+        // NOTE: every device above must exist when the container starts, or
+        // Docker refuses to launch it. If you boot the Pi with something
+        // unplugged, use start-container.sh instead -- it skips what is
+        // missing and warns rather than failing.
+
+        // `ros` is not in dialout (serial) or video (camera/media/dma_heap)
+        // by default. Assumes the container's GIDs match the host's -- both
+        // are 20/44 on Debian and Ubuntu, including Raspberry Pi OS.
+        //
+        // Camera access would also work via the host ACL (`user:mike:rw-` on
+        // every /dev/video*), because `ros` is uid 1000 and so is `mike` --
+        // but that ACL is not tracked anywhere, so do not rely on it.
+        "--group-add=dialout",
+        "--group-add=video"
     ],
 
     // Deliberately absent vs the workstation config:

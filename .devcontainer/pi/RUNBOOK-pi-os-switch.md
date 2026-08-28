@@ -98,7 +98,78 @@ paths and permissions break later:
 | SSH | enable, public-key auth | paste your workstation's `~/.ssh/id_*.pub` |
 | WiFi / locale | as before | |
 
-Write to the same media the Pi booted from in Phase 0.
+Also set a password even with key-only SSH -- everything from Phase 2 on uses
+`sudo`, and key auth does not help at a sudo prompt.
+
+Write to the same media the Pi booted from in Phase 0 (a **microSD** card, as
+of 2026-08-28 -- note it presents as a USB device when read through a card
+reader, which is not the same thing).
+
+### Imager customisation does not work on Trixie
+
+Pi OS Trixie (2026-06-18 image onward) takes its first-boot config from
+**cloud-init**, not Imager's `firstrun.sh`. `rpi-imager` 1.8.5 writes the old
+mechanism, the image ignores it, and you get a stock install with no user, no
+SSH and no WiFi -- with no error anywhere. Verify before booting: if
+`bootfs` has no `firstrun.sh` or `custom.toml`, and `cmdline.txt` has no
+`systemd.run=` token, nothing was applied.
+
+Either upgrade Imager, or write the cloud-init files directly to `bootfs`
+after flashing. `user-data` (`#cloud-config`) with the first `users:` entry
+named `mike` is the important one: the `raspberry_pi_os` cloud-init distro
+class routes the first user through `/usr/lib/userconf-pi/userconf`, which
+**renames** the stock `pi` account instead of adding a second one -- so
+`mike` inherits uid 1000. A naive user block gives you `mike` at 1001 with
+`pi` still holding 1000, and the `/workspace` bind mount breaks.
+
+`network-config` is netplan v2 and accepts the raw 64-hex PSK directly, so
+WiFi can be restored from the old install's `network-config` without knowing
+the passphrase. Also `touch bootfs/ssh` -- `sshswitch.service` enables sshd
+only if that file exists.
+
+### Two host settings that are not in any config file
+
+**WiFi ships disabled.** `nmcli radio wifi` reports `disabled` and
+`/sys/class/rfkill/*/soft` is `1` for `phy0`. Netplan renders the config
+correctly and the interface still never comes up. Fix: `sudo nmcli radio
+wifi on`.
+
+**HDMI on a monitor with no EDID.** If the display shows the boot screen then
+goes black, or reports "Out of Range":
+
+    # /boot/firmware/cmdline.txt -- ONE line, no trailing newline
+    video=HDMI-A-1:e drm.edid_firmware=HDMI-A-1:edid/forced-1080p.bin
+
+`e` forces the connector connected regardless of hotplug detect. Do **not**
+spell out `1920x1080@60` in that token: with no EDID the kernel computes GTF
+timings at ~172.8 MHz and the monitor reports "Out of Range". The synthetic
+EDID supplies the standard CEA-861 timing at 148.5 MHz instead. Generate and
+install it with `f.sh` from the Phase 0 backup, which writes
+`/lib/firmware/edid/forced-1080p.bin`.
+
+vc4 is a module inside the initramfs, so the first six firmware-load attempts
+fail with `-2` before the rootfs is mounted; the retry after mount succeeds.
+Those errors are expected. The console stays at 1024x768 during early boot
+and the desktop comes up at 1080p.
+
+Legacy `hdmi_group` / `hdmi_mode` / `hdmi_safe` / `hdmi_force_hotplug` are
+**ignored on Pi 5 under full KMS**. Do not reach for them.
+
+**A supply with no USB-C PD negotiation** (bench regulator, USB-to-bare-wire)
+makes the firmware assume 900 mA and warn on screen. Two separate settings,
+both needed:
+
+    # /boot/firmware/config.txt, under [all]
+    usb_max_current_enable=1        # lifts the USB current cap
+
+    sudo rpi-eeprom-config --apply <(rpi-eeprom-config; echo PSU_MAX_CURRENT=5000)
+
+The config.txt line alone does not clear the warning -- that message comes
+from the bootloader before Linux starts, so it needs the EEPROM setting.
+Confirm with `cat /proc/device-tree/chosen/power/max_current | od -An -tu4
+--endian=big` (expect 5000, not 900). Note `rpi-eeprom-config --apply` also
+flashes the packaged bootloader image, which may be newer than the installed
+one.
 
 ---
 
@@ -109,6 +180,22 @@ First boot, then:
     sudo apt update && sudo apt full-upgrade -y
     sudo reboot
 
+**Check the apt indexes before installing anything.** The 2026-06-18 Pi OS
+image shipped with every `main` component `Packages` file truncated to zero
+bytes, while `contrib`/`non-free` were fine. apt knew 6,257 packages instead
+of ~165,000, and `apt-get update` reported `Hit` every time because the
+`InRelease` files were valid -- so it never refetched them.
+
+    apt-cache stats | head -2      # expect ~165,000 package names
+
+Anything near 6,000 means the indexes are broken. The symptom downstream is
+baffling: `docker-ce Depends iptables but none of the choices are
+installable: [no choices]` -- not a version conflict, apt simply has no
+record that `iptables` exists. Fix:
+
+    sudo rm -rf /var/lib/apt/lists/*
+    sudo apt-get update
+
 Docker:
 
     curl -fsSL https://get.docker.com | sh
@@ -117,6 +204,11 @@ Docker:
 Log out and back in (group membership only applies to new sessions), then:
 
     docker run --rm hello-world
+
+The `usermod` fails the first time you run these together -- the `docker`
+group does not exist until `docker-ce` is installed. Run it after, not
+alongside. And `permission denied ... /var/run/docker.sock` afterwards means
+your shell predates the `usermod`; open a new one.
 
 Confirm the base facts this setup assumes:
 
@@ -177,16 +269,28 @@ Do not use `create_udev_rules.sh` -- it calls `colcon_cd`, which needs a
 sourced ROS workspace, and ROS only exists inside the container. udev only
 runs on the host.
 
-**Arduino / motor controller** -- this rule was never tracked. Restore it
-from `/tmp/pi-backup.tgz` if you have it. Otherwise recreate it; the CH340
-adapter is `1a86:7523`:
+**All three rules are now tracked in this repo** at `.devcontainer/pi/udev/`
+(they were not, before 2026-08-28 -- the arduino/motor rules existed only on
+the old Pi's filesystem). Install them:
 
-    sudo tee /etc/udev/rules.d/99-arduino.rules >/dev/null <<'EOF'
-    KERNEL=="ttyUSB*", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", MODE:="0777", SYMLINK+="arduino", SYMLINK+="motor"
-    EOF
+    sudo cp .devcontainer/pi/udev/*.rules /etc/udev/rules.d/
+    sudo chown root:root /etc/udev/rules.d/*.rules
 
-Both symlinks point at the same physical device -- two nodes, one CH340. The
-mode is belt-and-braces given the container uses `--group-add=dialout`.
+Do not hand-type a replacement. An earlier version of this runbook suggested
+a single `99-arduino.rules` with `MODE:="0777"`, which is worse than what was
+actually running in three ways:
+
+  - `0777` makes the motor controller world-writable. The real rules use
+    `MODE="0660", GROUP="dialout"`, which is sufficient because both you and
+    the container's `ros` user are in `dialout`.
+  - It omitted `ENV{ID_MM_DEVICE_IGNORE}="1"`. Without that, ModemManager
+    probes the CH340 with AT commands on every plug-in -- a real cause of
+    flaky motor comms on first connect.
+  - It matched `KERNEL=="ttyUSB*"` rather than `SUBSYSTEM=="tty"`, so it
+    would silently stop working if the board ever enumerated as `ttyACM*`.
+
+(If you do paste a heredoc: the closing `EOF` must be at column 0. Indenting
+it leaves you at a `>` continuation prompt with the command hanging.)
 
 Reload and verify:
 
@@ -204,35 +308,50 @@ fix the rule rather than the symptoms.
 
 Restore the shim and config from the backup:
 
-    cd ~ && tar xzf /tmp/pi-backup.tgz .claude .local/share/claude .local/share/mybot
+    cd ~ && tar xzf /tmp/pi-backup.tgz .claude .local/share/mybot
 
-If the backup is missing, reinstall Claude Code on the host and recreate the
-shim before the `docker run` below -- the `-v` lines fail without those paths.
+`.local/share/claude` is deliberately NOT in the backup -- it is ~1.1 GB of
+cached CLI builds and re-downloads in seconds. But the shim resolves
+`/opt/claude/versions/*`, so that directory must exist and hold a build:
 
-Then start the container. Take the `--device` lines for the camera from what
-you recorded in Phase 3, and **add nothing that does not exist**:
+    curl -fsSL https://claude.ai/install.sh | bash
 
-    docker run -d --name mybot-pi \
-      --network=host --ipc=host \
-      --device=/dev/arduino --device=/dev/motor --device=/dev/rplidar \
-      --device=/dev/ttyUSB0 --device=/dev/ttyUSB1 \
-      --device=/dev/dma_heap/linux,cma \
-      --device=/dev/dma_heap/system \
-      --device=/dev/video0 --device=/dev/media0 \
-      --group-add=dialout \
-      -v /home/mike/robotics/my_bot:/workspace \
-      -v /home/mike/.local/share/claude:/opt/claude:ro \
-      -v /home/mike/.claude:/home/ros/.claude \
-      -v /home/mike/.local/share/mybot/claude-shim:/usr/local/bin/claude:ro \
-      -w /workspace -u ros \
-      ghcr.io/mjwoolley/ros2-humble-dev:0.2.0 sleep infinity
+All three paths must exist before the container starts, or the `-v` lines
+create root-owned empty directories instead of failing loudly.
 
+Then start the container:
+
+    bash .devcontainer/pi/start-container.sh
     docker exec -it mybot-pi bash
 
-The `dma_heap` nodes are not optional: libcamera allocates frame buffers
-there, and without them the camera enumerates and then fails on first
-capture. The `video*`/`media*` list above is a placeholder -- use the real
-node names from Phase 3, there are usually several.
+Use the script rather than a hand-written `docker run`. It generates the
+`--device` list from what is actually present -- 37 devices on a working Pi 5
+-- and warns about anything missing instead of letting Docker refuse to
+start. `.devcontainer/pi/devcontainer.json` carries the same list explicitly
+for the VS Code flow.
+
+Three things earlier versions of this runbook got wrong, all of which fail
+in ways that look like a working setup:
+
+  - **`--device=/dev/video0 --device=/dev/media0` is not enough, and names
+    the wrong device.** `media0` is `pispbe` (the ISP); the camera is behind
+    `media2` (`rp1-cfe`). libcamera needs the whole rp1-cfe + pispbe set plus
+    the three subdevs. `media3` is the HEVC decoder and is not needed --
+    libcamera logs one harmless ERROR line skipping it.
+  - **`-v /run/udev:/run/udev:ro` is mandatory.** libcamera enumerates
+    through udev. Without it, every device node is present and readable and
+    libcamera still reports `no cameras available`, having never looked.
+  - **`--group-add=video` is needed**, not just `dialout`. All the
+    `video*`/`media*`/`dma_heap` nodes are `root:video`. It happens to work
+    without it via the host ACL (`user:mike:rw-`, and `ros` is also uid
+    1000), but that ACL is not tracked anywhere.
+
+Also pass `--init`: PID 1 is `sleep infinity`, which never reaps children, so
+each stopped `camera_node` leaves a zombie.
+
+The `dma_heap` nodes are not optional either: libcamera allocates frame
+buffers there, and without them the camera enumerates and then fails on
+first capture.
 
 ---
 
@@ -247,11 +366,24 @@ Verify it linked against the right libcamera -- this is the failure that
 looks like success:
 
     source /workspace/camera_ws/install/setup.bash
-    ldd $(ros2 pkg prefix camera_ros)/lib/camera_ros/camera_node | grep -i libcamera
+    ldd /workspace/camera_ws/install/camera_ros/lib/libcamera_component.so \
+      | grep -i libcamera
 
-Both entries must resolve into `/workspace/camera_ws/install`. Anything in
-`/usr/lib/aarch64-linux-gnu` means it picked up the distro's June-2020
-libcamera and the build has to be redone.
+**Check `libcamera_component.so`, NOT `camera_node`.** `camera_node` is a
+thin executable that only links `rclcpp`; the camera code lives in the
+composable-node library. Running `ldd` on `camera_node` prints no libcamera
+lines at all, which looks like a clean result and tells you nothing -- it
+reports the same empty output whether the build is right or wrong.
+
+Expect all three of these to resolve into `/workspace/camera_ws/install`:
+
+    libcamera.so.0.7       -> .../install/libcamera/lib/
+    libcamera-base.so.0.7  -> .../install/libcamera/lib/
+    libpisp.so.1           -> .../install/libcamera/lib/
+
+`libpisp` is the strongest signal: it is the Pi 5 ISP support that the
+distro's June-2020 libcamera does not have at all. Anything resolving into
+`/usr/lib/aarch64-linux-gnu` means the build has to be redone.
 
 Then the actual goal:
 
@@ -262,24 +394,39 @@ Then the actual goal:
 
 ## Phase 7 -- write the working config back into the repo
 
-Once frames are publishing, put the camera `--device` lines into
-`.devcontainer/pi/devcontainer.json` `runArgs` so the devcontainer flow
-matches the hand-rolled `docker run`, and update README-camera.md's status
-line. Commit both, plus the arduino udev rule if you recreated it -- losing
-it twice would be careless.
+**Done 2026-08-28.** Now tracked on `main`:
+
+  - `.devcontainer/pi/devcontainer.json` -- full 37-device `runArgs`, the
+    `/run/udev` mount, `--group-add=video`, `--init`
+  - `.devcontainer/pi/start-container.sh` -- generates the device list from
+    what is present; prefer it over the JSON when hardware may be unplugged
+  - `.devcontainer/pi/udev/*.rules` -- all three rules, tracked for the first
+    time. They previously existed only on the Pi's filesystem, which is
+    exactly how they came to be lost
+  - `.devcontainer/pi/setup-camera-ws.sh` -- was on `camera-setup` only
+  - `camera_ws/` in `.gitignore`
 
 ---
 
 ## Verification checklist
 
-- [ ] `id mike` -> uid 1000, dialout present
-- [ ] `docker run --rm hello-world` works without sudo
-- [ ] `rpicam-hello --list-cameras` lists the IMX500
-- [ ] `/dev/arduino`, `/dev/motor`, `/dev/rplidar` all resolve
-- [ ] container starts with every `--device` line present
-- [ ] `ldd` on camera_node points into `/workspace/camera_ws/install`
-- [ ] `ros2 run camera_ros camera_node` publishes `sensor_msgs/Image`
+Verified end-to-end on 2026-08-28 (Pi OS Trixie, image 2026-06-18):
+
+- [x] `id mike` -> uid 1000, dialout present
+- [x] `docker run --rm hello-world` works without sudo
+- [x] `rpicam-hello --list-cameras` lists the IMX500
+- [x] `/dev/arduino`, `/dev/motor`, `/dev/rplidar` all resolve
+- [x] container starts with every `--device` line present (37 of them)
+- [x] `ldd` on **`libcamera_component.so`** resolves libcamera, libcamera-base
+      and libpisp into `/workspace/camera_ws/install`
+- [x] `ros2 run camera_ros camera_node` publishes `sensor_msgs/Image` --
+      800x600 `bgra8`, sustained 30.0 Hz on `/camera/image_raw`
 - [ ] lidar and motors still work: see the launch commands in devcontainer.json
+      -- **not yet re-tested after the OS switch**
+
+Known gap: `/camera/camera_info` publishes `height: 0, width: 0` with no
+distortion model. The camera is uncalibrated, which is fine for viewing
+frames but not for anything needing intrinsics (AprilTags, visual odometry).
 
 ## What this still does not give you
 

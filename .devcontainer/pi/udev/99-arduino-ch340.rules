@@ -1,0 +1,4 @@
+# Stop ModemManager probing the CH340/Arduino with AT commands on plug-in
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", ENV{ID_MM_DEVICE_IGNORE}="1"
+# Convenience symlink: /dev/arduino
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="arduino"

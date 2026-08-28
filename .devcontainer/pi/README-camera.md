@@ -1,6 +1,14 @@
 # Raspberry Pi AI Camera (IMX500) -> ROS 2 Humble container
 
-Status: **blocked at step 1** — the host is not detecting a camera.
+Status: **working** as of 2026-08-28, after the switch to Raspberry Pi OS
+Trixie (see RUNBOOK-pi-os-switch.md). `camera_ros` publishes
+`/camera/image_raw` at 800x600 `bgra8`, sustained 30 Hz, against a
+source-built libcamera 0.7.2 with PiSP support.
+
+Step 1 is no longer blocked: Ubuntu's `-raspi` kernel had no `imx500` driver,
+overlay or firmware. Raspberry Pi OS ships all three, and
+`rpicam-hello --list-cameras` finds the sensor with no extra work beyond
+`apt install imx500-all`.
 
 ## Step 1 (host): make the Pi see the sensor
 

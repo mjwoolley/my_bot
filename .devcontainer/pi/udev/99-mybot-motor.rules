@@ -1,0 +1,5 @@
+# /dev/motor -> CH340 motor controller (serial_motor_demo/driver.py).
+# The same device already gets /dev/arduino from 99-arduino-ch340.rules; this
+# adds a name that says what it drives. Both symlinks coexist -- udev
+# accumulates SYMLINK+= across rule files.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="motor", MODE="0660", GROUP="dialout"

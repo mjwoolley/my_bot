@@ -24,3 +24,8 @@ __pycache__/
 *.swp
 *~
 .DS_Store
+
+# Out-of-tree workspace for the libcamera + camera_ros build (see
+# .devcontainer/pi/README-camera.md). Lives under /workspace so it survives
+# container rebuilds -- /home/ros does not -- but must not enter this repo.
+camera_ws/
