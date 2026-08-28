@@ -43,6 +43,7 @@ echo "Passing ${#DEV[@]} devices."
 docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" \
   --network=host --ipc=host \
+  --init \
   "${DEV[@]}" \
   --group-add=dialout --group-add=video \
   -v /run/udev:/run/udev:ro \
