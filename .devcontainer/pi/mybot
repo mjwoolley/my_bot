@@ -25,22 +25,27 @@ STARTER="$HERE/start-container.sh"
 exists()  { docker inspect "$NAME" >/dev/null 2>&1; }
 running() { [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" = "true" ]; }
 
+# docker exec flags: -i always, -t only when stdin really is a terminal.
+# Hardcoding -it breaks every non-interactive caller (ssh host 'mybot run ...',
+# scripts, CI) with "cannot attach stdin to a TTY-enabled container".
+tty_flags() { if [ -t 0 ]; then printf -- '-it'; else printf -- '-i'; fi; }
+
 ensure_up() {
     if running; then return 0; fi
     if exists; then
+        # `docker start` resumes the SAME writable layer -- anything apt
+        # installed is still there. Only a recreate loses it.
         echo "Starting existing container '$NAME'..." >&2
         docker start "$NAME" >/dev/null
     else
         echo "No container '$NAME'. Creating from start-container.sh..." >&2
         [ -x "$STARTER" ] || { echo "mybot: $STARTER missing or not executable" >&2; exit 1; }
         "$STARTER"
-    fi
-    # A recreated container has a fresh writable layer, so the apt packages
-    # installed by setup-camera-ws.sh are gone even though camera_ws itself
-    # survives on the bind mount. Say so rather than letting camera_node fail
-    # with a missing shared library later.
-    if ! docker exec "$NAME" sh -c '[ -e /usr/lib/*/libgnutls.so* ]' 2>/dev/null; then
-        echo "NOTE: container layer is fresh -- if the camera is needed, run:" >&2
+        # A freshly CREATED container has a new writable layer, so the apt
+        # packages from setup-camera-ws.sh are gone even though camera_ws
+        # itself survives on the bind mount. Warn now rather than letting
+        # camera_node fail later on a missing shared library.
+        echo "NOTE: new container layer -- if you need the camera, run:" >&2
         echo "      bash /workspace/.devcontainer/pi/setup-camera-ws.sh" >&2
     fi
 }
@@ -48,13 +53,13 @@ ensure_up() {
 case "${1:-shell}" in
     shell)
         ensure_up
-        exec docker exec -it "$NAME" bash
+        exec docker exec $(tty_flags) "$NAME" bash
         ;;
     run)
         shift
         [ $# -gt 0 ] || { echo "mybot run: need a command" >&2; exit 2; }
         ensure_up
-        exec docker exec -it "$NAME" bash -lc "$*"
+        exec docker exec $(tty_flags) "$NAME" bash -lc "$*"
         ;;
     start)
         ensure_up
@@ -67,7 +72,7 @@ case "${1:-shell}" in
     restart)
         [ -x "$STARTER" ] || { echo "mybot: $STARTER missing" >&2; exit 1; }
         "$STARTER"
-        exec docker exec -it "$NAME" bash
+        exec docker exec $(tty_flags) "$NAME" bash
         ;;
     logs)
         shift
