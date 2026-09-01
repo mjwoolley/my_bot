@@ -25,7 +25,7 @@ __pycache__/
 *~
 .DS_Store
 
-# Out-of-tree workspace for the libcamera + camera_ros build (see
-# .devcontainer/pi/README-camera.md). Lives under /workspace so it survives
-# container rebuilds -- /home/ros does not -- but must not enter this repo.
-camera_ws/
+# --- Crash dumps ---
+# The motor driver work produced several 100+ MB core files in ros2_ws/.
+core
+core.*

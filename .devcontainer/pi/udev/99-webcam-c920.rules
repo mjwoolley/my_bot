@@ -1,0 +1,11 @@
+# /dev/webcam -> Logitech HD Pro Webcam C920 capture node.
+#
+# The C920 claims TWO video4linux nodes. Only index 0 is a capture device;
+# index 1 is metadata-only (Device Caps 0x04a00000) and enumerates no capture
+# formats, so a camera node pointed at it fails. ATTR{index} is what tells
+# them apart -- matching on vendor/product alone gets you a coin flip.
+#
+# The bare videoN numbering is not stable: the same camera came up as USB
+# device 006 before a reboot and 003 after. Match on the serial so the symlink
+# survives replugging and any other UVC device being added later.
+SUBSYSTEM=="video4linux", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="082d", ATTRS{serial}=="4967746F", ATTR{index}=="0", SYMLINK+="webcam"

@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # Start the mybot ROS 2 container on the Pi 5 (Raspberry Pi OS Trixie).
 #
-# Device list is GENERATED, not hardcoded: the runbook placeholder
-# (--device=/dev/video0 --device=/dev/media0) is wrong on a Pi 5 -- media0 is
-# the ISP, not the camera, and libcamera needs the whole rp1-cfe + pispbe set
-# or it enumerates and then fails on first capture.
+# Devices are added through add(), which WARNS on a missing device instead of
+# failing. devcontainer.json lists the same set statically and Docker refuses
+# to start when any entry is absent -- prefer this script when something is
+# unplugged.
+#
+# The camera is a Logitech C920 (USB/UVC), which needs exactly one node. The
+# CSI machinery this script used to carry -- dma_heap buffers, the rp1-cfe and
+# pispbe media/video nodes, the v4l-subdevs, the /run/udev mount -- was all
+# for libcamera driving the IMX500. That camera is gone and so is all of it.
 set -euo pipefail
 
 NAME=${NAME:-mybot-pi}
@@ -17,26 +22,24 @@ add() { [ -e "$1" ] && DEV+=(--device="$1") || echo "WARN: missing $1" >&2; }
 # --- serial -------------------------------------------------------------
 for d in /dev/arduino /dev/motor /dev/rplidar /dev/ttyUSB0 /dev/ttyUSB1; do add "$d"; done
 
-# --- dma_heap (libcamera frame buffers; camera fails on capture without) --
-add "/dev/dma_heap/linux,cma"
-add "/dev/dma_heap/system"
+# --- camera: the C920 capture node --------------------------------------
+# /dev/webcam is a udev symlink (see udev/99-webcam-c920.rules). The C920
+# claims two video nodes and only index 0 captures; index 1 is metadata-only
+# and pointing a camera node at it fails. Fall back to the bare node if the
+# rule has not been installed yet.
+if [ -e /dev/webcam ]; then
+  add /dev/webcam
+else
+  echo "WARN: /dev/webcam missing -- install udev/99-webcam-c920.rules" >&2
+  add /dev/video0
+fi
 
-# --- camera: media devices for pispbe (ISP) + rp1-cfe (CSI), skip hevc ---
-for m in /dev/media*; do
-  case "$(media-ctl -d "$m" -p 2>/dev/null | awk "/model/{print \$2; exit}")" in
-    pispbe|rp1-cfe) add "$m" ;;
-  esac
-done
-
-# --- camera: v4l2 nodes belonging to rp1-cfe / pispbe --------------------
-for v in /sys/class/video4linux/video*; do
-  case "$(cat "$v/name" 2>/dev/null)" in
-    rp1-cfe*|pispbe*) add "/dev/$(basename "$v")" ;;
-  esac
-done
-
-# --- camera: subdevs (csi2, pisp-fe, imx500) -----------------------------
-for v in /sys/class/video4linux/v4l-subdev*; do add "/dev/$(basename "$v")"; done
+# --- Hailo-10H NPU ------------------------------------------------------
+# The kernel driver stays on the host (hailo1x_pci, DKMS, apt-managed from
+# archive.raspberrypi.com). Only the character device crosses into the
+# container. HailoRT userspace in the image must match the host driver
+# version exactly.
+add /dev/hailo0
 
 echo "Passing ${#DEV[@]} devices."
 
@@ -46,7 +49,6 @@ docker run -d --name "$NAME" \
   --init \
   "${DEV[@]}" \
   --group-add=dialout --group-add=video \
-  -v /run/udev:/run/udev:ro \
   -v "$REPO":/workspace \
   -v "$HOME/.local/share/claude":/opt/claude:ro \
   -v "$HOME/.claude":/home/ros/.claude \

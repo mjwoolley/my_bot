@@ -41,12 +41,6 @@ ensure_up() {
         echo "No container '$NAME'. Creating from start-container.sh..." >&2
         [ -x "$STARTER" ] || { echo "mybot: $STARTER missing or not executable" >&2; exit 1; }
         "$STARTER"
-        # A freshly CREATED container has a new writable layer, so the apt
-        # packages from setup-camera-ws.sh are gone even though camera_ws
-        # itself survives on the bind mount. Warn now rather than letting
-        # camera_node fail later on a missing shared library.
-        echo "NOTE: new container layer -- if you need the camera, run:" >&2
-        echo "      bash /workspace/.devcontainer/pi/setup-camera-ws.sh" >&2
     fi
 }
 

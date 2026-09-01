@@ -2,19 +2,20 @@
     // Raspberry Pi 5 variant. Open with:
     //   F1 -> "Dev Containers: Reopen in Container" -> "MyBot ROS 2 Humble (Pi 5)"
     //
-    // Pins the CORE image, not -desktop. ros-humble-desktop-full and
-    // ros-humble-gazebo-ros-pkgs have no arm64 builds, so RViz and Gazebo
-    // cannot run here. Run those on the workstation and talk to the robot
-    // over DDS. See Dockerfile.desktop in ros2-humble-dev for the reasoning.
+    // Pins the CORE image, not -desktop. That split exists because
+    // ros-humble-desktop-full and ros-humble-gazebo-ros-pkgs have no arm64
+    // build. NOTE: on Jazzy that is no longer true -- ros-jazzy-desktop-full
+    // and ros-jazzy-ros-gz are both published for arm64. After the Jazzy
+    // upgrade the split must be rejustified on image size and Pi load
+    // (indexing ROS headers and carrying RViz is the heaviest thing you can
+    // ask a Pi to do), not on availability. See RUNBOOK-jazzy-upgrade.md.
     //
-    // HOST: Raspberry Pi OS Trixie (Debian 13). Verified working 2026-08-28
-    // with the IMX500 publishing /camera/image_raw at 30 Hz.
+    // HOST: Raspberry Pi OS Trixie (Debian 13).
     //
-    // This device list is long and every entry must exist or Docker refuses
-    // to start the container. `.devcontainer/pi/start-container.sh` does the
+    // The device list below is short by design and every entry must exist or
+    // Docker refuses to start the container. `start-container.sh` does the
     // same thing but GENERATES the list from what is actually present, which
-    // is the more robust path when something is unplugged. Prefer it when
-    // this file fights you.
+    // is the more robust path when something is unplugged.
     "name": "MyBot ROS 2 Humble (Pi 5)",
     "image": "ghcr.io/mjwoolley/ros2-humble-dev:0.2.0",
     "remoteUser": "ros",
@@ -22,21 +23,13 @@
     "workspaceFolder": "/workspace",
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
 
-    "mounts": [
-        // libcamera enumerates cameras through udev. Without this the device
-        // nodes are all visible and readable and libcamera still reports
-        // "no cameras available" -- it never looks at them. This single line
-        // is the difference between a working camera and a silent failure.
-        "source=/run/udev,target=/run/udev,type=bind,readonly"
-    ],
-
     "runArgs": [
         // host networking + host IPC so DDS can discover the workstation
         "--network=host",
         "--ipc=host",
 
         // PID 1 is a long-lived sleep, which does not reap children. Without
-        // an init, every camera_node you stop leaves a zombie behind.
+        // an init, every node you stop leaves a zombie behind.
         "--init",
 
         // ---- Serial devices ----------------------------------------------
@@ -48,8 +41,8 @@
         //   /dev/arduino  /dev/motor  /dev/ttyUSB1   -> CH340,   1a86:7523
         //   /dev/rplidar  /dev/ttyUSB0               -> CP2102N, 10c4:ea60
         //
-        // The symlinks come from udev rules on the HOST, now tracked in this
-        // repo at .devcontainer/pi/udev/. Install them before first use:
+        // The symlinks come from udev rules on the HOST, tracked in this repo
+        // at .devcontainer/pi/udev/. Install them before first use:
         //   sudo cp .devcontainer/pi/udev/*.rules /etc/udev/rules.d/
         //   sudo udevadm control --reload-rules && sudo udevadm trigger
         //
@@ -68,65 +61,32 @@
         "--device=/dev/ttyUSB0",
         "--device=/dev/ttyUSB1",
 
-        // ---- Camera: dma_heap ---------------------------------------------
-        // libcamera allocates frame buffers here. Without these it
-        // enumerates the sensor and then fails on first capture.
-        "--device=/dev/dma_heap/linux,cma",
-        "--device=/dev/dma_heap/system",
+        // ---- Camera: Logitech C920 (USB / UVC) ---------------------------
+        // A UVC webcam emits finished YUYV/MJPG frames, so it needs exactly
+        // one node and none of the CSI machinery the IMX500 required (no
+        // dma_heap, no media devices, no v4l-subdevs, no /run/udev mount --
+        // that was all for libcamera, which is no longer in the picture).
+        //
+        // /dev/webcam is a udev symlink to the CAPTURE node. The C920 claims
+        // two video nodes and only index 0 captures; index 1 is metadata-only
+        // and pointing a camera node at it fails. The bare videoN numbering
+        // is not stable across reboots, which is why the symlink exists.
+        "--device=/dev/webcam",
 
-        // ---- Camera: media devices ----------------------------------------
-        // media0 + media1 are `pispbe` (the Pi 5 ISP), media2 is `rp1-cfe`
-        // (the CSI front-end the sensor sits behind). libcamera pairs them:
-        //   "Registered camera ... imx500 to CFE device /dev/media2
-        //    and ISP device /dev/media0 using PiSP variant BCM2712_D0"
-        // media3 is rpi-hevc-dec, the video decoder -- deliberately NOT
-        // passed. libcamera logs one ERROR line about failing to open it and
-        // then skips it; that message is expected and harmless.
-        "--device=/dev/media0",
-        "--device=/dev/media1",
-        "--device=/dev/media2",
+        // ---- Hailo-10H NPU ------------------------------------------------
+        // The kernel driver (hailo1x_pci, DKMS) stays on the HOST and is
+        // apt-managed from archive.raspberrypi.com. Only this character
+        // device is passed in; HailoRT userspace inside the container talks
+        // to it via ioctl/mmap with no virtualization overhead.
+        //
+        // HARD REQUIREMENT: the HailoRT userspace in the image must match the
+        // host driver version EXACTLY (5.1.1 today). A mismatch fails at
+        // runtime, not at build time.
+        "--device=/dev/hailo0",
 
-        // ---- Camera: rp1-cfe v4l2 nodes (CSI capture, stats, config) ------
-        "--device=/dev/video0",
-        "--device=/dev/video1",
-        "--device=/dev/video2",
-        "--device=/dev/video3",
-        "--device=/dev/video4",
-        "--device=/dev/video5",
-        "--device=/dev/video6",
-        "--device=/dev/video7",
-
-        // ---- Camera: pispbe v4l2 nodes (ISP input/output/config) ----------
-        "--device=/dev/video20",
-        "--device=/dev/video21",
-        "--device=/dev/video22",
-        "--device=/dev/video23",
-        "--device=/dev/video24",
-        "--device=/dev/video25",
-        "--device=/dev/video26",
-        "--device=/dev/video27",
-        "--device=/dev/video28",
-        "--device=/dev/video29",
-        "--device=/dev/video30",
-        "--device=/dev/video31",
-        "--device=/dev/video32",
-        "--device=/dev/video33",
-        "--device=/dev/video34",
-        "--device=/dev/video35",
-
-        // ---- Camera: subdevs (csi2, pisp-fe, imx500 sensor) ---------------
-        "--device=/dev/v4l-subdev0",
-        "--device=/dev/v4l-subdev1",
-        "--device=/dev/v4l-subdev2",
-
-        // NOTE: every device above must exist when the container starts, or
-        // Docker refuses to launch it. If you boot the Pi with something
-        // unplugged, use start-container.sh instead -- it skips what is
-        // missing and warns rather than failing.
-
-        // `ros` is not in dialout (serial) or video (camera/media/dma_heap)
-        // by default. Assumes the container's GIDs match the host's -- both
-        // are 20/44 on Debian and Ubuntu, including Raspberry Pi OS.
+        // `ros` is not in dialout (serial) or video (camera) by default.
+        // Assumes the container's GIDs match the host's -- both are 20/44 on
+        // Debian and Ubuntu, including Raspberry Pi OS.
         //
         // Camera access would also work via the host ACL (`user:mike:rw-` on
         // every /dev/video*), because `ros` is uid 1000 and so is `mike` --
@@ -137,7 +97,9 @@
 
     // Deliberately absent vs the workstation config:
     //   --gpus=all          no NVIDIA on the Pi
-    //   DISPLAY / X11 mount headless; nothing here draws a window
+    //   DISPLAY / X11 mount this image has no GUI tools to draw with.
+    //                       The Hailo image adds them -- see run-container.sh
+    //                       in the ros2-hailo-dev repo.
     "containerEnv": {},
 
     "customizations": {

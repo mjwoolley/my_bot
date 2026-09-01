@@ -33,7 +33,7 @@ Two repos change:
 | Repo | Change |
 |---|---|
 | `ros2-humble-dev` | base image, package names, rosdep distro. The repo and image name become wrong -- see naming below. |
-| `my_bot` (this one) | `mybot_gazebo` and every `<gazebo>` block in the xacro files; both `devcontainer.json` files; `camera_ws` rebuild |
+| `my_bot` (this one) | `mybot_gazebo` and every `<gazebo>` block in the xacro files; both `devcontainer.json` files |
 
 **Do these as separate commits, and ideally separate sittings.** The base
 image bump and the Gazebo migration fail independently, and debugging them
@@ -43,10 +43,9 @@ together is miserable.
 
 ## Prerequisite -- close the open item first
 
-The lidar and motors have **not been driven since the Pi OS switch**. They
-enumerate and their udev symlinks resolve, but no node has talked to them.
-Test them on the current Humble container before changing distro, or a
-failure afterwards is ambiguous between the OS switch and the distro jump.
+CLOSED. The lidar and motors **have** been driven since the Pi OS switch, so
+a failure after the distro jump is no longer ambiguous between the OS switch
+and the distro bump. For reference, the commands that exercised them:
 
     # [CONTAINER]
     ros2 launch rplidar_ros rplidar_c1_launch.py \
@@ -109,50 +108,35 @@ tags rather than after.
 
 ## Phase 2 [CONTAINER] -- the camera
 
-**This is the phase that can save the most work or cost the most time.**
+**This phase is now trivial.** It used to be the one that could save the most
+work or cost the most time; the hardware change removed it.
 
-Today `camera_ws` builds libcamera 0.7.2 (Raspberry Pi fork, with libpisp
-1.5.0) and camera_ros from source, taking 5-15 minutes and needing the apt
-block in `setup-camera-ws.sh`. On Jazzy there are packages:
+The IMX500 CSI camera was returned to the store and replaced with a Logitech
+C920 on USB. That retires libcamera completely:
 
-    ros-jazzy-camera-ros    0.6.0    arm64 + amd64
-    ros-jazzy-libcamera     0.7.1    arm64 + amd64
+  - `camera_ws`, the source-built libcamera 0.7.2 + camera_ros -- **deleted**
+  - `setup-camera-ws.sh` -- **deleted**
+  - the whole `ros-jazzy-libcamera`-lacks-`libpisp` investigation -- moot
 
-0.7.1 versus the 0.7.2 we built, so the version gap is trivial.
+A C920 is a UVC device: it emits finished YUYV/MJPG/H264 frames, which is
+exactly what a plain V4L2 node wants. `camera_ros` could not drive it anyway
+-- the libcamera we built carries only the `rpi/pisp` and `rpi/vc4` pipeline
+handlers, with no `uvcvideo` handler, and the host's packaged libcamera is
+the same (`rpicam-hello --list-cameras` -> `No cameras available!`).
 
-**But do not assume this replaces the source build.** `ros-jazzy-libcamera`
-lists no `libpisp` dependency:
+So Phase 2 is one apt line:
 
-    Depends: libc6, libgcc-s1, libssl3t64, libstdc++6, libudev1, libyaml-0-2,
-             libatomic1, libssl-dev, libudev-dev, libyaml-dev, libyuv-dev,
-             python3-dev, ros-jazzy-ros-workspace
+    sudo apt-get install -y ros-jazzy-usb-cam
 
-The Pi 5 pipeline handler (`rpi/pisp`) needs libpisp. Its absence strongly
-suggests the packaged build has no PiSP support and will not drive the
-IMX500 -- the same failure mode as Ubuntu's June-2020 libcamera, just less
-obvious because the version number looks current.
+Note this reverses the "v4l2_camera is NOT usable" finding in the old
+`README-camera.md`. That was correct **for the CSI path** -- the Pi 5 CSI
+front-end emits packed raw Bayer that only libcamera can push through the
+PiSP ISP. It says nothing about a UVC webcam.
 
-Settle it in five minutes before planning around it:
-
-    # [CONTAINER, on a Jazzy image]
-    sudo apt-get install -y ros-jazzy-camera-ros
-    ldd /opt/ros/jazzy/lib/libcamera_component.so | grep -iE 'libcamera|libpisp'
-    ros2 run camera_ros camera_node
-
-  - Publishes frames -> delete `setup-camera-ws.sh` and `camera_ws`
-    entirely, and Phase 2 is a one-line apt install. Large simplification.
-  - `no cameras available`, or no libpisp in the `ldd` output -> keep the
-    source build. Change `setup-camera-ws.sh`'s `--skip-keys=libcamera` to
-    also skip `ros-jazzy-libcamera`, or rosdep will pull the packaged one
-    back in underneath you.
-
-Either way `camera_ws` must be **rebuilt from scratch** -- it is compiled
-against Humble on 22.04. Delete it rather than trying an incremental build:
-
-    rm -rf /workspace/camera_ws
-
-Re-verify with the same check that Phase 6 of the Pi OS runbook uses, and
-remember it must target `libcamera_component.so`, not `camera_node`.
+Camera parameters for the C920 live in `mybot_detection`'s launch file. The
+one number worth remembering: YUYV tops out at 30 fps up to 800x448, and
+720p YUYV is only 10 fps. Use 640x480 unless you have a reason not to, or
+switch to MJPG and pay a JPEG decode per frame.
 
 ---
 
@@ -207,12 +191,12 @@ version is confirmed working -- there is no incremental path back.
 Reuse the Pi OS runbook's checklist; these are the Jazzy-specific additions.
 
 - [ ] `ros-jazzy-*` image builds for **both** arm64 and amd64 in CI
-- [ ] container starts from `.devcontainer/pi/devcontainer.json` with all
-      37 devices, `/run/udev`, `--group-add=video`, `--init`
+- [ ] container starts from `.devcontainer/pi/devcontainer.json` with its 7
+      devices, `--group-add=video`, `--init`
 - [ ] `id` inside the container -> uid 1000, `dialout` and `video`
-- [ ] camera publishes `/camera/image_raw` at ~30 Hz, and `ldd` on
-      `libcamera_component.so` shows libcamera **and libpisp** from wherever
-      you settled Phase 2
+- [ ] camera publishes `/image_raw` at ~30 Hz from `usb_cam` on `/dev/webcam`
+- [ ] `hailortcli fw-control identify` inside the container reports
+      HAILO10H, and the HailoRT version matches the host driver exactly
 - [ ] lidar publishes `/scan` with `frame_id: laser_frame`
 - [ ] motors respond on `/dev/motor` at 57600
 - [ ] `[WORKSTATION]` Gazebo Harmonic launches, robot spawns
@@ -224,11 +208,13 @@ Reuse the Pi OS runbook's checklist; these are the Jazzy-specific additions.
 
 ## Traps carried over
 
-From RUNBOOK-pi-os-switch.md, all still apply after the upgrade:
+The libcamera traps (the `ldd` target, the `/run/udev` mount, the
+`camera_ws/` gitignore) died with the CSI camera. What still applies:
 
-  - `ldd` must target `libcamera_component.so`; on `camera_node` it prints
-    nothing and looks clean either way
-  - `/run/udev` must be mounted or libcamera finds no cameras despite every
-    node being present
   - the camera needs `--group-add=video`, the ACL is not tracked
-  - `camera_ws/` is gitignored; do not let a rebuild add it to the repo
+  - `/dev/videoN` numbering is not stable across reboots -- use the
+    `/dev/webcam` udev symlink, and note the C920 claims two nodes where only
+    `ATTR{index}=="0"` captures
+  - HailoRT userspace in the image must match the host kernel driver version
+    exactly; the host driver is DKMS-built and apt-managed, and must not be
+    replaced by Hailo's own driver .deb
