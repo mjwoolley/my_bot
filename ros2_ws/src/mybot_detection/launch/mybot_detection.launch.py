@@ -1,6 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
 
 
@@ -32,10 +32,15 @@ def generate_launch_description():
             executable='usb_cam_node_exe',
             output='screen',
             parameters=[{
-                # udev symlink to the CAPTURE node. The C920 claims two video
-                # nodes and only index 0 captures; index 1 is metadata-only.
-                # See .devcontainer/pi/udev/99-webcam-c920.rules.
-                'video_device': '/dev/webcam',
+                # Set by run-container.sh, which resolves the /dev/webcam udev
+                # symlink to the real node. It must be the REAL /dev/videoN
+                # path: usb_cam only accepts devices it can find by walking
+                # /sys/class/video4linux, so a node passed under an alias is
+                # rejected as "not a valid V4L2 device" even when it opens
+                # fine. See .devcontainer/pi/udev/99-webcam-c920.rules -- the
+                # C920 claims two nodes and only index 0 captures.
+                'video_device': EnvironmentVariable(
+                    'MYBOT_VIDEO_DEVICE', default_value='/dev/video0'),
                 # YUYV is uncompressed, so no JPEG decode per frame. The model
                 # input is 640x640 anyway, so 720p would buy nothing -- and
                 # the C920 only manages 10 fps at 720p in YUYV vs 30 at 480p.
@@ -44,8 +49,12 @@ def generate_launch_description():
                 'image_height': 480,
                 'framerate': 30.0,
                 # Matches camera_link_optical in mybot/description/camera.xacro,
-                # which is the frame detections are reported in.
-                'camera_frame_id': 'camera_link_optical',
+                # which is the frame detections are reported in -- the detector
+                # copies the image header, so this is what stamps /detections.
+                # NOTE the key is `frame_id`, not `camera_frame_id`: usb_cam
+                # 0.8.1 ignores unknown parameters silently, and the frame
+                # quietly defaults to the camera_name ("default_cam").
+                'frame_id': 'camera_link_optical',
             }]
         ),
 
