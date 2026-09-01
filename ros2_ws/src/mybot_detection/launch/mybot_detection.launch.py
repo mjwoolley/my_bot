@@ -1,0 +1,66 @@
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
+
+def generate_launch_description():
+
+    publish_annotated = LaunchConfiguration('publish_annotated')
+    score_threshold = LaunchConfiguration('score_threshold')
+
+    # Launch!
+    return LaunchDescription([
+
+        DeclareLaunchArgument(
+            'publish_annotated',
+            default_value='true',
+            description='Publish /detections/image_annotated with boxes drawn '
+                        'on the frame. Set false on the robot to save the '
+                        'draw and the second image topic.'
+        ),
+
+        DeclareLaunchArgument(
+            'score_threshold',
+            default_value='0.40',
+            description='Drop detections below this score. The HEF already '
+                        'applies 0.200 on-chip, so this can only be stricter.'
+        ),
+
+        Node(
+            package='usb_cam',
+            executable='usb_cam_node_exe',
+            output='screen',
+            parameters=[{
+                # udev symlink to the CAPTURE node. The C920 claims two video
+                # nodes and only index 0 captures; index 1 is metadata-only.
+                # See .devcontainer/pi/udev/99-webcam-c920.rules.
+                'video_device': '/dev/webcam',
+                # YUYV is uncompressed, so no JPEG decode per frame. The model
+                # input is 640x640 anyway, so 720p would buy nothing -- and
+                # the C920 only manages 10 fps at 720p in YUYV vs 30 at 480p.
+                'pixel_format': 'yuyv2rgb',
+                'image_width': 640,
+                'image_height': 480,
+                'framerate': 30.0,
+                # Matches camera_link_optical in mybot/description/camera.xacro,
+                # which is the frame detections are reported in.
+                'camera_frame_id': 'camera_link_optical',
+            }]
+        ),
+
+        Node(
+            package='mybot_detection',
+            executable='detector',
+            output='screen',
+            parameters=[{
+                # 80-class COCO YOLOv11m, compiled for the Hailo-10H. NMS runs
+                # on-chip, so nothing here decodes raw tensors.
+                'hef_path': '/usr/share/hailo-models/yolov11m_h10.hef',
+                'score_threshold': score_threshold,
+                'publish_annotated': publish_annotated,
+                'input_topic': '/image_raw',
+                'frame_id': 'camera_link_optical',
+            }]
+        ),
+    ])
