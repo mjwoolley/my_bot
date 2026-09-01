@@ -29,3 +29,7 @@ __pycache__/
 # The motor driver work produced several 100+ MB core files in ros2_ws/.
 core
 core.*
+
+# HailoRT drops these wherever a process using it runs.
+hailort.log
+hailort.*.log
