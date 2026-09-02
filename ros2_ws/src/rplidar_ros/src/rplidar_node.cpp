@@ -37,6 +37,11 @@
 #include <std_srvs/srv/empty.hpp>
 #include "sl_lidar.h"
 #include "math.h"
+// Both were reaching us transitively through rclcpp.hpp. GCC 13/14 pruned
+// those transitive includes, so name them: <limits> for
+// numeric_limits<float>::infinity() and <cstring> for memset.
+#include <limits>
+#include <cstring>
 
 #include <signal.h>
 

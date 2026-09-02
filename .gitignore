@@ -3,9 +3,13 @@ build/
 install/
 log/
 
-# Per-machine marker telling colcon to skip a package. The Pi uses one in
-# mybot_gazebo (gazebo_ros has no arm64 build); the workstation must still
-# build that package, so this stays local to each machine.
+# Per-machine marker telling colcon to skip a package. This was local to
+# each machine while the Pi was the only box that could not build
+# mybot_gazebo. It is now tracked instead: gazebo_ros and gazebo_ros_pkgs
+# have no Jazzy release at all (gazebo_ros_pkgs was discontinued after
+# Iron), so `rosdep install --from-paths src` fails on EVERY machine until
+# the Gazebo Classic -> Harmonic port happens. The marker in mybot_gazebo
+# is committed with `git add -f`; this rule still covers any other one.
 COLCON_IGNORE
 
 # --- ROS / Gazebo runtime ---

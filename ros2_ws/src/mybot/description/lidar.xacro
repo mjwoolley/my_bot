@@ -24,34 +24,41 @@
         </xacro:inertial_cylinder>
     </link>
 
-    <gazebo reference="laser_frame">
-        <material>Gazebo/Red</material>
+    <!-- Simulation only. The links and joints above are the real robot's
+         and must always be built: rsp.launch.py needs laser_frame and
+         camera_link_optical on hardware. Only this Gazebo Classic block is
+         gated, so every Classic reference sits behind use_sim and the
+         Harmonic port is one visible job. -->
+    <xacro:if value="$(arg use_sim)">
+        <gazebo reference="laser_frame">
+            <material>Gazebo/Red</material>
 
-        <sensor name="laser" type="ray">
-            <pose> 0 0 0 0 0 0 </pose>
-            <visualize>false</visualize>
-            <update_rate>10</update_rate>
-            <ray>
-                <scan>
-                    <horizontal>
-                        <samples>500</samples>
-                        <min_angle>-3.14</min_angle>
-                        <max_angle>3.14</max_angle>
-                    </horizontal>
-                </scan>
-                <range>
-                    <min>0.05</min>
-                    <max>12</max>
-                </range>
-            </ray>
-            <plugin name="laser_controller" filename="libgazebo_ros_ray_sensor.so">
-                <ros>
-                    <argument>~/out:=scan</argument>
-                </ros>
-                <output_type>sensor_msgs/LaserScan</output_type>
-                <frame_name>laser_frame</frame_name>
-            </plugin>
-        </sensor>
-    </gazebo>
+            <sensor name="laser" type="ray">
+                <pose> 0 0 0 0 0 0 </pose>
+                <visualize>false</visualize>
+                <update_rate>10</update_rate>
+                <ray>
+                    <scan>
+                        <horizontal>
+                            <samples>500</samples>
+                            <min_angle>-3.14</min_angle>
+                            <max_angle>3.14</max_angle>
+                        </horizontal>
+                    </scan>
+                    <range>
+                        <min>0.05</min>
+                        <max>12</max>
+                    </range>
+                </ray>
+                <plugin name="laser_controller" filename="libgazebo_ros_ray_sensor.so">
+                    <ros>
+                        <argument>~/out:=scan</argument>
+                    </ros>
+                    <output_type>sensor_msgs/LaserScan</output_type>
+                    <frame_name>laser_frame</frame_name>
+                </plugin>
+            </sensor>
+        </gazebo>
+    </xacro:if>
 
 </robot>

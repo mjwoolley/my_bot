@@ -1,11 +1,13 @@
 ################################################################################
 # Set minimum required version of cmake, project name and compile options
 ################################################################################
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.16)
 project(rplidar_ros)
 
+# 14 here only ever worked by accident: rclcpp::rclcpp carries cxx_std_17
+# in its interface and CMake takes the max of the two. Say what we mean.
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
+  set(CMAKE_CXX_STANDARD 17)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -93,7 +95,6 @@ install(
 # Macro for ament package
 ################################################################################
 ament_export_dependencies(rclcpp)
-ament_export_dependencies(std_msgs)
 ament_export_dependencies(sensor_msgs)
 ament_export_include_directories(include)
 ament_package()
