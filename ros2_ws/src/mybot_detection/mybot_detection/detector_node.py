@@ -123,8 +123,12 @@ class DetectorNode(Node):
         A typo would otherwise filter out everything and look exactly like a
         broken detector, so unknown names are reported and dropped.
         """
-        requested = [str(n).strip() for n in self.get_parameter('class_filter').value]
-        requested = [n for n in requested if n]
+        # None, not [], when the parameter resolves to NOT_SET -- which is
+        # what dynamic_typing allows and what the launch file's default '[]'
+        # actually produces. Reading it as a list crashes the node at
+        # startup, so treat unset and empty as the same thing: no filtering.
+        raw = self.get_parameter('class_filter').value or []
+        requested = [n for n in (str(n).strip() for n in raw) if n]
         if not requested:
             return set()
 
