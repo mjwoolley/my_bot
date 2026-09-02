@@ -87,10 +87,6 @@
         </xacro:inertial_cylinder>
     </link>
 
-    <gazebo reference="left_wheel">
-        <material>Gazebo/Blue</material>
-    </gazebo>
-
     <!-- RIGHT WHEEL LINK -->
 
     <joint name="right_wheel_joint" type="continuous">
@@ -116,10 +112,6 @@
             <origin xyz="0 0 0" rpy="0 0 0" />
         </xacro:inertial_cylinder>
     </link>
-
-    <gazebo reference="right_wheel">
-        <material>Gazebo/Blue</material>
-    </gazebo>
 
     <!-- CASTER WHEEL LINK -->
 
@@ -147,10 +139,21 @@
         </xacro:inertial_sphere>
     </link>
 
+    <!-- Low friction so the caster slides instead of dragging; without it the
+         robot will not turn. sdformat's URDF parser maps these onto the link's
+         collision as <surface><friction><ode><mu>/<mu2>, which gz-physics'
+         DART plugin reads. Unlike a <material> child, this survives the move
+         to Harmonic unchanged.
+
+         Ungated on purpose. This block is inert outside simulation - URDF
+         parsers ignore <gazebo> - and gating it would mean the description
+         differed between the two machines for no gain. The Classic material
+         children that used to sit alongside it are gone: Gazebo/* are Ogre
+         material SCRIPTS, which ogre2 does not have, and sdformat lets them
+         overwrite the colours the URDF <material> elements already produce. -->
     <gazebo reference="caster_wheel">
-        <material>Gazebo/Black</material>
-        <mu1 value="0.001" />
-        <mu2 value="0.001" />
+        <mu1>0.001</mu1>
+        <mu2>0.001</mu2>
     </gazebo>
 
 </robot>

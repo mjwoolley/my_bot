@@ -1,28 +1,78 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="robot">
 
-    <gazebo>
-        <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
-            <!-- The left and right wheels are the names of the joints in the URDF -->
-            <left_joint>left_wheel_joint</left_joint>
-            <right_joint>right_wheel_joint</right_joint>
+    <!-- Simulation only. Gated internally, matching lidar.xacro and
+         camera.xacro - robot.urdf.xacro also wraps the include, which is
+         belt and braces rather than the only guard. -->
+    <xacro:if value="$(arg use_sim)">
+        <gazebo>
+            <plugin filename="gz-sim-diff-drive-system"
+                    name="gz::sim::systems::DiffDrive">
+                <!-- The left and right wheels are the names of the joints in the URDF -->
+                <left_joint>left_wheel_joint</left_joint>
+                <right_joint>right_wheel_joint</right_joint>
 
-            <!-- The wheel separation is the distance between the wheels in meters -->
-            <wheel_separation>0.35</wheel_separation>
-            <wheel_diameter>0.1</wheel_diameter>
+                <!-- Harmonic takes a RADIUS. Classic took <wheel_diameter>0.1</>.
+                     Getting this wrong is silent and expensive: gz ignores an
+                     unknown <wheel_diameter> and falls back to its DEFAULT
+                     wheel_radius of 0.2 m, so the robot drives four times too
+                     fast with four times wrong odometry and no warning. -->
+                <wheel_separation>0.35</wheel_separation>
+                <wheel_radius>0.05</wheel_radius>
 
-            <!-- Limits -->
-            <max_wheel_torque>200</max_wheel_torque>
-            <max_wheel_acceleration>10.0</max_wheel_acceleration>
+                <!-- Limits. gz-sim 8 DiffDrive has no torque limit at all: it
+                     drives the joints with a velocity command that the physics
+                     engine satisfies directly, so Classic's
+                     <max_wheel_torque>200</> has no equivalent and is dropped.
+                     Acceleration becomes a BODY-level limit rather than a
+                     per-wheel one - Classic's 10 rad/s^2 at r=0.05 is
+                     0.5 m/s^2, which is what these numbers mean. -->
+                <max_linear_acceleration>0.5</max_linear_acceleration>
+                <max_angular_acceleration>3.0</max_angular_acceleration>
 
-            <!-- Output -->
-            <odometry_frame>odom</odometry_frame>
-            <robot_base_frame>base_link</robot_base_frame>
+                <!-- Output. Every one of these is required. The defaults are
+                     model-scoped - /model/my_bot/cmd_vel, .../odometry,
+                     .../tf, frame_id "my_bot/odom", child_frame_id
+                     "my_bot/base_link" - which match neither the real robot's
+                     topic names nor the RViz configs. -->
+                <topic>/cmd_vel</topic>
+                <odom_topic>/odom</odom_topic>
+                <tf_topic>/tf</tf_topic>
+                <frame_id>odom</frame_id>
+                <child_frame_id>base_link</child_frame_id>
+                <odom_publish_frequency>30</odom_publish_frequency>
+            </plugin>
 
-            <publish_odom>true</publish_odom>
-            <publish_odom_tf>true</publish_odom_tf>
-            <publish_wheel_tf>true</publish_wheel_tf>
-        </plugin>
-    </gazebo>
+            <!-- Replaces Classic's <publish_wheel_tf>true</publish_wheel_tf>,
+                 which has no Harmonic equivalent. gz publishes joint positions
+                 and the bridge carries them to /joint_states, so
+                 robot_state_publisher computes the wheel TF exactly as it does
+                 on the real robot.
+
+                 Without this the failure is easy to miss: TF is still complete
+                 and the robot still drives, the wheels just sit frozen at zero
+                 in RViz. -->
+            <plugin filename="gz-sim-joint-state-publisher-system"
+                    name="gz::sim::systems::JointStatePublisher">
+                <topic>/joint_states</topic>
+                <!-- IGNORED BY gz-sim 8.11.0, which is what Jazzy ships.
+                     JointStatePublisher gained <update_rate> after that release
+                     (the string is not even present in
+                     libgz-sim8-joint-state-publisher-system.so.8.11.0), so
+                     today this plugin publishes every physics step: 1000 Hz
+                     against the 1 ms step size. Left in place because it is the
+                     correct configuration and starts working on the next gz
+                     bump, but do not expect it to do anything yet - if you are
+                     wondering why /joint_states is at 1 kHz, this is why.
+
+                     Harmless in practice on a workstation: the message carries
+                     two joints, and /tf stays at 50 Hz. It would be worth
+                     caring about if this ever ran on the Pi. -->
+                <update_rate>30</update_rate>
+                <joint_name>left_wheel_joint</joint_name>
+                <joint_name>right_wheel_joint</joint_name>
+            </plugin>
+        </gazebo>
+    </xacro:if>
 
 </robot>

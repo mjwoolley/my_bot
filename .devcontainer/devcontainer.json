@@ -1,6 +1,11 @@
 {
-    "name": "MyBot ROS 2 Humble",
-    "image": "ghcr.io/mjwoolley/ros2-humble-dev:0.2.0-desktop",
+    // Workstation variant. This is where the simulation runs -- the Pi has no
+    // Gazebo. Image comes from the ros2-sim-dev repo (renamed from
+    // ros2-humble-dev when it stopped being a Humble image): ROS 2 Jazzy plus
+    // desktop-full and Gazebo Harmonic via ros_gz. amd64 only, by choice --
+    // the Pi runs ros2-hailo-dev instead. See ../RUNBOOK-jazzy-upgrade.md.
+    "name": "MyBot ROS 2 Jazzy (workstation)",
+    "image": "ghcr.io/mjwoolley/ros2-sim-dev:0.3.0",
     "remoteUser": "ros",
 
     // Runs on the HOST before the container starts. The X server demands a
@@ -25,11 +30,28 @@
     "containerEnv": {
         "DISPLAY": "${localEnv:DISPLAY}",
         "QT_X11_NO_MITSHM": "1",
-        "NVIDIA_DRIVER_CAPABILITIES": "all"
+        "NVIDIA_DRIVER_CAPABILITIES": "all",
+
+        // Only matters for HEADLESS runs (gz_args:='-r -s'), where ogre2 has no
+        // X display and falls back to EGL. Without this, glvnd offers the
+        // NVIDIA device to Mesa's dri2 loader first, which cannot drive it:
+        //   libEGL warning: pci id for fd 52: 10de:2c02, driver (null)
+        //   libEGL warning: egl: failed to create dri2 screen
+        // Sensors still render (software fallback) so it is a performance bug,
+        // not a correctness one, which is exactly why it is easy to miss.
+        // The GUI path uses GLX and never reaches this.
+        "__EGL_VENDOR_LIBRARY_FILENAMES": "/usr/share/glvnd/egl_vendor.d/10_nvidia.json"
     },
 
     "mounts": [
-        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind"
+        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind",
+
+        // Gazebo Fuel cache. obstacles.sdf pulls the construction barrel and
+        // cone models from Fuel on first launch and caches them under
+        // ~/.gz/fuel. Without a volume that cache dies with the container,
+        // so every rebuild re-downloads them -- and offline, the world comes
+        // up silently empty rather than failing.
+        "source=mybot-gz-cache,target=/home/ros/.gz,type=volume"
     ],
 
     "customizations": {

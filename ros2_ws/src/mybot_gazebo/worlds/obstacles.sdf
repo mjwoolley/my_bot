@@ -1,0 +1,163 @@
+<?xml version="1.0" ?>
+<!--
+  Obstacle course: two construction barrels and seven cones on a ground plane.
+
+  REBUILT for Harmonic rather than converted. The Classic version was 646 lines
+  because it was a GUI save: a 109-line <state> snapshot of settled poses, a
+  <gui> camera pose, and every mesh inlined twice - once under <world> and
+  again under <state> - plus empty <surface>/<self_collide>/<enable_wind>
+  boilerplate. The signal in all of it was nine poses and two mesh URIs, and
+  those URIs (model://construction_barrel/...) pointed at Gazebo Classic's model
+  DATABASE, which does not exist in Harmonic. Converting would have carried the
+  noise forward for nothing.
+
+  Two deliberate differences from the Classic world:
+
+    - The obstacles are <static>true</static>. The original gave the barrels
+      mass 500 specifically so a 0.8 kg robot could not shove them; static says
+      that intent directly and makes the world deterministic.
+    - They are native size. The Classic cones carried <scale>10 10 10</scale> on
+      the mesh and <include> has no scale override. The Fuel cone is ~0.7 m and
+      the barrel ~0.9 m, both well clear of the lidar at z=0.175, which is all
+      this world is for.
+
+  Fuel models download on first launch and cache to ~/.gz/fuel. The workstation
+  devcontainer mounts a volume there so a container rebuild does not re-fetch
+  them - and so that being offline fails loudly rather than producing an empty
+  world. Pre-warm with:
+    gz fuel download -u "https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Barrel"
+    gz fuel download -u "https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone"
+-->
+<sdf version="1.10">
+  <world name="default">
+
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <!-- See empty.sdf: declaring any <plugin> means declaring all of them, and
+         each omission fails silently. Sensors is what makes the gpu_lidar and
+         the camera produce data at all. -->
+    <plugin filename="gz-sim-physics-system"
+            name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system"
+            name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system"
+            name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system"
+            name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <gravity>0 0 -9.8</gravity>
+
+    <scene>
+      <ambient>0.4 0.4 0.4 1</ambient>
+      <background>0.7 0.7 0.7 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane><normal>0 0 1</normal><size>100 100</size></plane>
+          </geometry>
+          <surface>
+            <friction><ode><mu>100</mu><mu2>50</mu2></ode></friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane><normal>0 0 1</normal><size>100 100</size></plane>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.8 1</ambient>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.8 0.8 0.8 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Barrel</uri>
+      <name>barrel_0</name>
+      <pose>-1.961 1.671 0 0 0 0</pose>
+      <static>true</static>
+    </include>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Barrel</uri>
+      <name>barrel_1</name>
+      <pose>-1.307 3.183 0 0 0 0</pose>
+      <static>true</static>
+    </include>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone</uri>
+      <name>cone_0</name>
+      <pose>2.519 -0.869 0 0 0 0</pose>
+      <static>true</static>
+    </include>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone</uri>
+      <name>cone_1</name>
+      <pose>2.673 0.145 0 0 0 0</pose>
+      <static>true</static>
+    </include>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone</uri>
+      <name>cone_2</name>
+      <pose>2.574 1.594 0 0 0 0</pose>
+      <static>true</static>
+    </include>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone</uri>
+      <name>cone_3</name>
+      <pose>2.390 3.700 0 0 0 0</pose>
+      <static>true</static>
+    </include>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone</uri>
+      <name>cone_4</name>
+      <pose>0.803 -1.706 0 0 0 0</pose>
+      <static>true</static>
+    </include>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone</uri>
+      <name>cone_5</name>
+      <pose>-2.000 -2.000 0 0 0 0</pose>
+      <static>true</static>
+    </include>
+
+    <include>
+      <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Construction Cone</uri>
+      <name>cone_6</name>
+      <pose>0.000 6.000 0 0 0 0</pose>
+      <static>true</static>
+    </include>
+
+  </world>
+</sdf>

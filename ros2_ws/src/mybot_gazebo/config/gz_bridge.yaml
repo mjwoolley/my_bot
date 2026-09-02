@@ -1,0 +1,103 @@
+# ros_gz_bridge topic map for the mybot simulation.
+#
+# READ THIS BEFORE DEBUGGING A MISSING TOPIC.
+#
+# Under Gazebo Classic the libgazebo_ros_* plugins published straight into ROS.
+# Harmonic does not: Gazebo publishes on its own gz-transport, and nothing
+# crosses into ROS 2 unless it is listed here. An omission is SILENT -- the
+# topic simply never appears in `ros2 topic list`, with no warning anywhere.
+# That is the single biggest source of "it launches and nothing happens" in
+# this stack.
+#
+# Every gz-side name below is pinned explicitly, either by a <topic> element in
+# mybot/description or by a plugin parameter in gazebo_control.xacro. None of
+# them are gz defaults -- the defaults are model-scoped paths like
+# /model/my_bot/odometry and /world/default/model/my_bot/link/base_link/
+# sensor/laser/scan, which is what you get back if someone drops a <topic>.
+#
+# To debug one topic at a time, the CLI form is:
+#   ros2 run ros_gz_bridge parameter_bridge /scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan
+# where @ is bidirectional, [ is gz->ros and ] is ros->gz.
+
+# ---- clock -------------------------------------------------------------
+# First for a reason: every node with use_sim_time:=true BLOCKS until this
+# arrives. If gz is started without -r it stays paused, /clock never ticks, and
+# RViz shows an empty scene forever with no error. rsp_sim.launch.py puts -r in
+# the gz_args default; a hand-typed `gz sim world.sdf` does not.
+- ros_topic_name: "/clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS
+  qos_profile: CLOCK
+
+# ---- command -----------------------------------------------------------
+# The only ROS_TO_GZ entry. teleop_twist_keyboard publishes unstamped Twist.
+- ros_topic_name: "/cmd_vel"
+  gz_topic_name: "/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+
+# ---- odometry ----------------------------------------------------------
+- ros_topic_name: "/odom"
+  gz_topic_name: "/odom"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+
+# odom -> base_link, and nothing else; robot_state_publisher supplies the rest
+# of the tree. GZ_TO_ROS, never BIDIRECTIONAL: a two-way /tf bridge feeds
+# robot_state_publisher's own output straight back into Gazebo.
+- ros_topic_name: "/tf"
+  gz_topic_name: "/tf"
+  ros_type_name: "tf2_msgs/msg/TFMessage"
+  gz_type_name: "gz.msgs.Pose_V"
+  direction: GZ_TO_ROS
+
+# ---- wheel motion ------------------------------------------------------
+# Replaces Classic's <publish_wheel_tf>. Note the gz side is a gz.msgs.Model,
+# not a JointState -- the bridge does that conversion. Without this entry the
+# robot drives but its wheels are frozen in RViz.
+- ros_topic_name: "/joint_states"
+  gz_topic_name: "/joint_states"
+  ros_type_name: "sensor_msgs/msg/JointState"
+  gz_type_name: "gz.msgs.Model"
+  direction: GZ_TO_ROS
+
+# ---- sensors -----------------------------------------------------------
+# SENSOR_DATA is best-effort, which is what RViz's LaserScan and Image displays
+# expect and what mybot/config/robot.rviz already asks for on the real robot. A
+# reliable publisher feeding a best-effort subscriber works; the reverse does
+# not, and the reverse presents as a topic that lists and echoes fine while
+# RViz shows nothing.
+#
+# If header.frame_id ever comes through as a mangled scoped name like
+# laser_frame_fixed_joint_lump__laser, the <gz_frame_id> in the description did
+# not take -- add `frame_id: "laser_frame"` to this entry as the override.
+- ros_topic_name: "/scan"
+  gz_topic_name: "/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
+  qos_profile: SENSOR_DATA
+
+# ros_gz_image's image_bridge would be the alternative here. It adds
+# image_transport (so /camera/image_raw/compressed and friends), which matters
+# if you ever stream sim images off this box or point mybot_detection at the
+# simulation. It is gz->ros only and does NOT carry camera_info, so it would be
+# an extra process alongside this bridge rather than a replacement. Not worth
+# it for a local RViz; revisit when there is a reason.
+- ros_topic_name: "/camera/image_raw"
+  gz_topic_name: "/camera/image_raw"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+  qos_profile: SENSOR_DATA
+
+- ros_topic_name: "/camera/camera_info"
+  gz_topic_name: "/camera/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+  qos_profile: SENSOR_DATA

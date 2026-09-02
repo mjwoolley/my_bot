@@ -91,7 +91,11 @@ Visualization Manager:
       Description Source: Topic
       Description Topic:
         Depth: 5
-        Durability Policy: Volatile
+        # robot_state_publisher latches /robot_description -- it publishes once,
+        # transient local. A Volatile subscriber starting after it gets nothing,
+        # and the launch file starts both at the same time, so Volatile here is
+        # a coin flip presenting as "the model sometimes doesn't appear".
+        Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /robot_description
@@ -134,6 +138,43 @@ Visualization Manager:
       Update Interval: 0
       Value: true
       Visual Enabled: true
+
+    # Bridged from Gazebo by ros_gz_bridge; see mybot_gazebo/config/gz_bridge.yaml.
+    # frame_id is pinned to laser_frame by <gz_frame_id> in mybot/description/
+    # lidar.xacro -- without that it arrives as a mangled post-lump scoped name
+    # and nothing renders.
+    - Class: rviz_default_plugins/LaserScan
+      Name: LaserScan
+      Enabled: true
+      Topic:
+        Value: /scan
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        # The bridge publishes this SENSOR_DATA, i.e. best-effort. A Reliable
+        # subscription never matches and RViz shows nothing, with no error.
+        Reliability Policy: Best Effort
+      Size (m): 0.03
+      Style: Points
+      Color Transformer: FlatColor
+      Color: 255; 85; 0
+      Decay Time: 0
+      Position Transformer: XYZ
+
+    # The simulated camera. Same topic name the real C920 uses via usb_cam, so
+    # this panel means the same thing on both robots.
+    - Class: rviz_default_plugins/Image
+      Name: Camera
+      Enabled: true
+      Topic:
+        Value: /camera/image_raw
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+      Max Value: 1
+      Min Value: 0
+      Normalize Range: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -201,6 +242,8 @@ Visualization Manager:
       Yaw: 0.785398006439209
     Saved: ~
 Window Geometry:
+  Camera:
+    collapsed: false
   Displays:
     collapsed: false
   Height: 1099

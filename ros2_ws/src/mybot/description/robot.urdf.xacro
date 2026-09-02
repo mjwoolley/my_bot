@@ -1,9 +1,15 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro"  name="robot">
 
-   <!-- Gazebo plugin tags are inert outside simulation, but the Pi has no
-        Gazebo at all, so keep them out of the real robot's URDF.
-        mybot_gazebo's launch file passes use_sim:=true. -->
+   <!-- Gazebo plugin tags are inert outside simulation - URDF parsers ignore
+        <gazebo> - but there is no reason to ship the simulator's plugins and
+        sensors in the real robot's description, so they are gated.
+        mybot_gazebo's launch file passes use_sim:=true.
+
+        Note this is no longer "the Pi cannot run Gazebo": ros_gz IS published
+        for arm64 on Jazzy. It is deliberately not installed in the Pi's image,
+        because running a simulator on the robot is a bad use of a Pi 5.
+        See .devcontainer/RUNBOOK-jazzy-upgrade.md. -->
    <xacro:arg name="use_sim" default="false"/>
 
    <xacro:include filename="robot_core.xacro" />

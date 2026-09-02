@@ -3,7 +3,10 @@
 <package format="3">
   <name>mybot_gazebo</name>
   <version>0.0.0</version>
-  <description>Gazebo simulation and RViz configs for mybot. Workstation only: gazebo_ros and gazebo_ros_pkgs have no arm64 build, so this package is not installable on the Pi.</description>
+  <description>Gazebo Harmonic (gz-sim 8) simulation, world files, the ros_gz
+  topic bridge and RViz configs for mybot. Runs on the workstation. Note this
+  is a choice about Pi load, not availability: ros_gz IS published for arm64 on
+  Jazzy. See .devcontainer/RUNBOOK-jazzy-upgrade.md.</description>
   <maintainer email="mwoolley2@gmail.com">mwoolley2</maintainer>
   <license>Apache-2.0</license>
 
@@ -12,15 +15,24 @@
   <!-- The robot description this package simulates -->
   <exec_depend>mybot</exec_depend>
 
-  <!-- amd64 only. These are the keys that make `rosdep install` fail on arm64,
-       which is the whole reason they live here and not in mybot. -->
-  <exec_depend>gazebo_ros</exec_depend>
-  <exec_depend>gazebo_ros_pkgs</exec_depend>
+  <!-- Gazebo Harmonic via ros_gz. Replaces gazebo_ros / gazebo_ros_pkgs, which
+       have no Jazzy release for any architecture - Gazebo Classic is EOL and
+       gazebo_ros_pkgs was discontinued after Iron.
+
+       These are also the keys that make `rosdep install -from-paths src` fail
+       on the Pi, whose image deliberately carries no simulator. Build there
+       with -skip-keys "ros_gz_sim ros_gz_bridge", or drop an untracked
+       COLCON_IGNORE in this directory. -->
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
 
   <!-- Visualisation. rviz2 and joint_state_publisher_gui do have arm64 builds,
        but a headless robot has no use for them. -->
   <exec_depend>rviz2</exec_depend>
   <exec_depend>joint_state_publisher_gui</exec_depend>
+
+  <!-- How you drive the simulated robot. -->
+  <exec_depend>teleop_twist_keyboard</exec_depend>
 
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>xacro</exec_depend>

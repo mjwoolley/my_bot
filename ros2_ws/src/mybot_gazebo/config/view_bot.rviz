@@ -88,7 +88,11 @@ Visualization Manager:
       Description Source: Topic
       Description Topic:
         Depth: 5
-        Durability Policy: Volatile
+        # robot_state_publisher latches /robot_description -- it publishes once,
+        # transient local. A Volatile subscriber starting after it gets nothing,
+        # and the launch file starts both at the same time, so Volatile here is
+        # a coin flip presenting as "the model sometimes doesn't appear".
+        Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /robot_description

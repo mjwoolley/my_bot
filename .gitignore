@@ -3,13 +3,15 @@ build/
 install/
 log/
 
-# Per-machine marker telling colcon to skip a package. This was local to
-# each machine while the Pi was the only box that could not build
-# mybot_gazebo. It is now tracked instead: gazebo_ros and gazebo_ros_pkgs
-# have no Jazzy release at all (gazebo_ros_pkgs was discontinued after
-# Iron), so `rosdep install --from-paths src` fails on EVERY machine until
-# the Gazebo Classic -> Harmonic port happens. The marker in mybot_gazebo
-# is committed with `git add -f`; this rule still covers any other one.
+# Per-machine marker telling colcon to skip a package. Untracked on purpose:
+# which packages a given box can build is a property of the box, not of the
+# repo. mybot_gazebo carried a tracked one while the Gazebo Classic -> Harmonic
+# port was outstanding; that is done, so it is gone.
+#
+# The Pi still cannot resolve mybot_gazebo's deps -- ros_gz_sim and
+# ros_gz_bridge are not in the ros2-hailo-dev image, by choice. Drop an
+# untracked COLCON_IGNORE there, or build with
+#   --skip-keys "ros_gz_sim ros_gz_bridge"
 COLCON_IGNORE
 
 # --- ROS / Gazebo runtime ---

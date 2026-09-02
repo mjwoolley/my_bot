@@ -26,37 +26,55 @@
 
     <!-- Simulation only. The links and joints above are the real robot's
          and must always be built: rsp.launch.py needs laser_frame and
-         camera_link_optical on hardware. Only this Gazebo Classic block is
-         gated, so every Classic reference sits behind use_sim and the
-         Harmonic port is one visible job. -->
+         camera_link_optical on hardware. Only this block is gated. -->
     <xacro:if value="$(arg use_sim)">
         <gazebo reference="laser_frame">
-            <material>Gazebo/Red</material>
-
-            <sensor name="laser" type="ray">
-                <pose> 0 0 0 0 0 0 </pose>
-                <visualize>false</visualize>
+            <sensor name="laser" type="gpu_lidar">
+                <pose>0 0 0 0 0 0</pose>
                 <update_rate>10</update_rate>
-                <ray>
+                <always_on>true</always_on>
+                <visualize>false</visualize>
+
+                <!-- Both of these are load-bearing, and both fail silently.
+                     Without <topic>, gz publishes on the scoped path
+                     /world/default/model/my_bot/link/base_link/sensor/laser/scan
+                     - base_link, not laser_frame, because sdformat lumps
+                     fixed-joint children into their parent. Without
+                     <gz_frame_id>, header.frame_id is the sensor's mangled
+                     post-lump name (laser_frame_fixed_joint_lump__laser), and
+                     RViz has no such frame so it draws nothing. -->
+                <topic>/scan</topic>
+                <gz_frame_id>laser_frame</gz_frame_id>
+
+                <!-- Harmonic renames the container element <ray> -> <lidar>.
+                     sdformat still accepts <ray> as a deprecated alias, but it
+                     warns, and the deprecated path is not the one to be on. -->
+                <lidar>
                     <scan>
                         <horizontal>
                             <samples>500</samples>
+                            <!-- A multiplier on samples, not an angular step. -->
+                            <resolution>1</resolution>
                             <min_angle>-3.14</min_angle>
                             <max_angle>3.14</max_angle>
                         </horizontal>
+                        <!-- Spec-optional, included deliberately: it states the
+                             single-ring intent, and an unspecified vertical
+                             block has repeatedly been the cause of an empty
+                             scan in gz-sensors. -->
+                        <vertical>
+                            <samples>1</samples>
+                            <resolution>1</resolution>
+                            <min_angle>0</min_angle>
+                            <max_angle>0</max_angle>
+                        </vertical>
                     </scan>
                     <range>
                         <min>0.05</min>
-                        <max>12</max>
+                        <max>12.0</max>
+                        <resolution>0.01</resolution>
                     </range>
-                </ray>
-                <plugin name="laser_controller" filename="libgazebo_ros_ray_sensor.so">
-                    <ros>
-                        <argument>~/out:=scan</argument>
-                    </ros>
-                    <output_type>sensor_msgs/LaserScan</output_type>
-                    <frame_name>laser_frame</frame_name>
-                </plugin>
+                </lidar>
             </sensor>
         </gazebo>
     </xacro:if>
