@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""A miniterm for ros_arduino_bridge that holds the last motor command.
+
+Run inside the container (pyserial is already there via python3-serial):
+
+    /workspace/.devcontainer/pi/motorterm --port /dev/motor
+
+The sketch stops the motors 2 s after the last 'm'/'o' (AUTO_STOP_INTERVAL),
+so driving by hand in miniterm is impossible. This retypes the held command
+for you at --rate Hz, while still letting you type 'e'/'r'/'b' to read
+encoders between refreshes.
+
+  o <l> <r>  raw PWM, -255..255  -- held and repeated
+  m <l> <r>  ticks per PID loop  -- held and repeated
+  s          shorthand for 'o 0 0', clears the hold
+  e / r / b  read encoders / reset encoders / baud -- sent once
+  q          quit (stops the motors on the way out)
+"""
+import argparse
+import select
+import sys
+import time
+
+import serial
+
+ap = argparse.ArgumentParser()
+ap.add_argument('--port', default='/dev/motor')
+ap.add_argument('--baud', type=int, default=57600)
+ap.add_argument('--rate', type=float, default=5.0, help='refresh Hz (>0.5)')
+ap.add_argument('--cmd', default='', help='command to hold at startup')
+args = ap.parse_args()
+
+ser = serial.Serial(args.port, args.baud, timeout=0.3)
+time.sleep(2.0)  # opening the port pulls DTR and resets the Arduino
+ser.reset_input_buffer()
+
+
+def send(cmd, quiet=False):
+    ser.write((cmd + '\r').encode())
+    reply = ser.read_until(b'\r').decode(errors='replace').strip()
+    if not quiet:
+        print(f'{cmd}  ->  {reply or "(no reply)"}', flush=True)
+    return reply
+
+
+send('b', quiet=True)  # throwaway: the first reply after a reset can be clipped
+ser.reset_input_buffer()
+
+held = args.cmd
+period = 1.0 / args.rate
+last = 0.0
+print(f'--- {args.port} @ {args.baud}, holding {held!r} at {args.rate} Hz. '
+      f'q to quit ---', flush=True)
+try:
+    while True:
+        if select.select([sys.stdin], [], [], 0.05)[0]:
+            line = sys.stdin.readline()
+            if not line:
+                break
+            line = line.strip()
+            if line in ('q', 'quit'):
+                break
+            if line == 's':
+                held = ''
+                send('o 0 0')
+            elif line.startswith(('o ', 'm ')):
+                held = line
+                send(line)
+            elif line:
+                send(line)
+        if held and time.time() - last >= period:
+            send(held, quiet=True)
+            last = time.time()
+finally:
+    send('o 0 0', quiet=True)
+    ser.close()
+    print('--- motors stopped, port closed ---')
