@@ -2,12 +2,14 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
 
     publish_annotated = LaunchConfiguration('publish_annotated')
     score_threshold = LaunchConfiguration('score_threshold')
+    class_filter = LaunchConfiguration('class_filter')
 
     # Launch!
     return LaunchDescription([
@@ -25,6 +27,15 @@ def generate_launch_description():
             default_value='0.40',
             description='Drop detections below this score. The HEF already '
                         'applies 0.200 on-chip, so this can only be stricter.'
+        ),
+
+        DeclareLaunchArgument(
+            'class_filter',
+            default_value='[]',
+            description='Allow-list of COCO class names, e.g. "[person,chair]". '
+                        'Empty publishes all 80. Filtering happens after '
+                        'inference -- the NPU still evaluates every class, so '
+                        'this cuts topic traffic and clutter, not NPU load.'
         ),
 
         Node(
@@ -70,6 +81,7 @@ def generate_launch_description():
                 'publish_annotated': publish_annotated,
                 'input_topic': '/image_raw',
                 'frame_id': 'camera_link_optical',
+                'class_filter': ParameterValue(class_filter, value_type=None),
             }]
         ),
     ])

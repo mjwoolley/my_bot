@@ -22,6 +22,7 @@ yolov11m_h10.hef with `hailortcli parse-hef` and a live inference:
 
 import numpy as np
 import rclpy
+from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
@@ -32,7 +33,7 @@ from vision_msgs.msg import (
     ObjectHypothesisWithPose,
 )
 
-from mybot_detection.coco_classes import class_name
+from mybot_detection.coco_classes import COCO_CLASSES, class_name
 
 # Imported lazily-ish so the failure message is useful. pyhailort has no
 # rosdep key: it comes from the container image, and its version must match
@@ -69,12 +70,28 @@ class DetectorNode(Node):
         self.declare_parameter('publish_annotated', True)
         self.declare_parameter('input_topic', '/image_raw')
         self.declare_parameter('frame_id', 'camera_link_optical')
+        # Allow-list of COCO names; empty (the default) means publish all 80.
+        #   --ros-args -p class_filter:="[person,chair]"
+        #
+        # dynamic_typing is required, not decoration. rclpy infers a
+        # parameter's type from its DEFAULT, and an empty list infers as
+        # BYTE_ARRAY, so passing class names to it dies with
+        # InvalidParameterTypeException before the node starts. Setting
+        # descriptor.type does not help -- the inferred type still wins.
+        # Verified on Jazzy; the alternative is a [''] default, which works
+        # but makes `ros2 param get` report a list containing one empty name.
+        self.declare_parameter(
+            'class_filter', [],
+            ParameterDescriptor(
+                dynamic_typing=True,
+                description='COCO class names to publish; empty means all.'))
 
         self._hef_path = self.get_parameter('hef_path').value
         self._score_threshold = float(self.get_parameter('score_threshold').value)
         self._publish_annotated = bool(self.get_parameter('publish_annotated').value)
         input_topic = self.get_parameter('input_topic').value
         self._frame_id = self.get_parameter('frame_id').value
+        self._class_filter = self._read_class_filter()
 
         self._bridge = CvBridge()
         self._busy = False
@@ -97,7 +114,29 @@ class DetectorNode(Node):
 
         self.get_logger().info(
             f'detector ready: hef={self._hef_path} topic={input_topic} '
-            f'threshold={self._score_threshold} annotated={self._publish_annotated}')
+            f'threshold={self._score_threshold} annotated={self._publish_annotated} '
+            f'classes={sorted(self._class_filter) if self._class_filter else "all"}')
+
+    def _read_class_filter(self) -> set:
+        """Validated allow-list of COCO names; an empty set means no filtering.
+
+        A typo would otherwise filter out everything and look exactly like a
+        broken detector, so unknown names are reported and dropped.
+        """
+        requested = [str(n).strip() for n in self.get_parameter('class_filter').value]
+        requested = [n for n in requested if n]
+        if not requested:
+            return set()
+
+        known = {n for n in requested if n in COCO_CLASSES}
+        unknown = [n for n in requested if n not in COCO_CLASSES]
+        if unknown:
+            self.get_logger().warn(
+                f'class_filter: ignoring unknown COCO class(es) {unknown}')
+        if not known:
+            self.get_logger().warn(
+                'class_filter: no valid classes left, publishing ALL classes')
+        return known
 
     # -- Hailo ------------------------------------------------------------
 
@@ -216,6 +255,11 @@ class DetectorNode(Node):
             detections = np.asarray(detections)
             if detections.size == 0:
                 continue
+            # Filter by class before looking at any box: the whole class is
+            # in or out, so this is one lookup instead of one per detection.
+            name = class_name(class_id)
+            if self._class_filter and name not in self._class_filter:
+                continue
             for det in detections:
                 score = float(det[4])
                 if score < self._score_threshold:
@@ -225,7 +269,6 @@ class DetectorNode(Node):
                 if x1 <= x0 or y1 <= y0:
                     continue
 
-                name = class_name(class_id)
                 array.detections.append(
                     self._make_detection(array.header, name, score, x0, y0, x1, y1))
 
