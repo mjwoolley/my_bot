@@ -35,6 +35,16 @@
         // an init, every node you stop leaves a zombie behind.
         "--init",
 
+        // Containers do not inherit the host's core limit: the host is 0 but
+        // the daemon default is unlimited, and core_pattern is the relative
+        // "core", so dumps land in the CWD -- which is the bind-mounted repo
+        // root. One bring-up session left 407 MB of them there, invisibly,
+        // because they are gitignored. The crashes that produced them were
+        // SIGABRT on fatal misconfiguration at startup (usb_cam on a bad
+        // V4L2 node, Qt with no platform integration), where the stderr
+        // message is the whole diagnosis.
+        "--ulimit", "core=0",
+
         // ---- Serial devices ----------------------------------------------
         // Two physical devices, five names. Docker resolves a --device
         // symlink on the host and recreates a real node inside the container
