@@ -1,23 +1,26 @@
 {
     // Raspberry Pi 5 variant. Open with:
-    //   F1 -> "Dev Containers: Reopen in Container" -> "MyBot ROS 2 Humble (Pi 5)"
+    //   F1 -> "Dev Containers: Reopen in Container" -> "MyBot ROS 2 Jazzy + Hailo (Pi 5)"
     //
-    // Pins the CORE image, not -desktop. That split exists because
-    // ros-humble-desktop-full and ros-humble-gazebo-ros-pkgs have no arm64
-    // build. NOTE: on Jazzy that is no longer true -- ros-jazzy-desktop-full
-    // and ros-jazzy-ros-gz are both published for arm64. After the Jazzy
-    // upgrade the split must be rejustified on image size and Pi load
-    // (indexing ROS headers and carrying RViz is the heaviest thing you can
-    // ask a Pi to do), not on availability. See RUNBOOK-jazzy-upgrade.md.
+    // The image is built by the ros2-hailo-dev repo, not pulled from a
+    // registry: `./build.sh` there. It is ROS 2 Jazzy on Ubuntu noble plus
+    // HailoRT 5.1.1, whose version must match the host's kernel driver.
+    //
+    // Still built on ros:jazzy-ros-base rather than -desktop, but for a
+    // different reason than the Humble image was. Availability is no longer
+    // the constraint (ros-jazzy-desktop-full IS published for arm64) -- image
+    // size and Pi load are. GUI tools are added one at a time as they earn
+    // their place; see the Dockerfile and ../RUNBOOK-jazzy-upgrade.md.
     //
     // HOST: Raspberry Pi OS Trixie (Debian 13).
     //
-    // The device list below is short by design and every entry must exist or
-    // Docker refuses to start the container. `start-container.sh` does the
-    // same thing but GENERATES the list from what is actually present, which
-    // is the more robust path when something is unplugged.
-    "name": "MyBot ROS 2 Humble (Pi 5)",
-    "image": "ghcr.io/mjwoolley/ros2-humble-dev:0.2.0",
+    // PREFER `mybot` (or run-container.sh directly) over this file. The
+    // device list below is static and every entry must exist or Docker
+    // refuses to start; run-container.sh GENERATES the list from what is
+    // actually present, and additionally passes the X cookie, /dev/dri, the
+    // HEF mount and MYBOT_VIDEO_DEVICE. This config is the VS Code path only.
+    "name": "MyBot ROS 2 Jazzy + Hailo (Pi 5)",
+    "image": "ros2-hailo-dev:0.1.0",
     "remoteUser": "ros",
 
     "workspaceFolder": "/workspace",
@@ -96,17 +99,22 @@
     ],
 
     // Deliberately absent vs the workstation config:
-    //   --gpus=all          no NVIDIA on the Pi
-    //   DISPLAY / X11 mount this image has no GUI tools to draw with.
-    //                       The Hailo image adds them -- see run-container.sh
-    //                       in the ros2-hailo-dev repo.
+    //   --gpus=all          no NVIDIA on the Pi; the Hailo NPU is passed as a
+    //                       character device instead, see above.
+    //   DISPLAY / X11 mount this path stays headless. The image CAN draw
+    //                       (rqt_image_view, rviz2), but the X cookie mount
+    //                       and hostname pinning that make it work under
+    //                       labwc live in run-container.sh. Use `mybot` when
+    //                       you want a window.
     "containerEnv": {},
 
     "customizations": {
         "vscode": {
-            // cpptools is dropped on purpose: mybot ships no C++
-            // sources, and indexing the ROS headers is the single heaviest
-            // thing you can ask a Pi to do in the background.
+            // cpptools is dropped on purpose. The workspace DOES carry
+            // C++ now (rplidar_ros and its vendored SDK), so this is no
+            // longer "there is nothing to index" -- it is that indexing the
+            // ROS headers is the single heaviest thing you can ask a Pi to
+            // do in the background. Edit the lidar driver on the workstation.
             "extensions": [
                 "ms-python.python",
                 "ms-python.vscode-pylance",

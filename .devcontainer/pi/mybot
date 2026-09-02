@@ -14,13 +14,24 @@
 #   mybot status       container state and device/mount summary
 #   mybot start        start or create, do not attach
 #   mybot stop         stop the container (does not delete it)
-#   mybot restart      recreate from start-container.sh, then attach
+#   mybot restart      recreate from run-container.sh, then attach
 #   mybot logs         docker logs
 set -euo pipefail
 
-NAME=${NAME:-mybot-pi}
+NAME=${NAME:-mybot-hailo}
+
+# The starter now lives in the OTHER repo. ros2-hailo-dev owns the Jazzy +
+# HailoRT image and the run script that knows about the HEF mount, the X
+# cookie and /dev/hailo0; duplicating it here is what let `mybot` silently
+# build a Humble container with none of that. Overridable, because the two
+# repos are not required to sit side by side.
 HERE=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
-STARTER="$HERE/start-container.sh"
+STARTER=${MYBOT_STARTER:-$HERE/../../../docker/ros2-hailo-dev/run-container.sh}
+if [ ! -x "$STARTER" ]; then
+    echo "mybot: cannot find run-container.sh at $STARTER" >&2
+    echo "       Clone ros2-hailo-dev beside my_bot, or set MYBOT_STARTER." >&2
+    exit 1
+fi
 
 exists()  { docker inspect "$NAME" >/dev/null 2>&1; }
 running() { [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" = "true" ]; }
@@ -38,7 +49,7 @@ ensure_up() {
         echo "Starting existing container '$NAME'..." >&2
         docker start "$NAME" >/dev/null
     else
-        echo "No container '$NAME'. Creating from start-container.sh..." >&2
+        echo "No container '$NAME'. Creating from run-container.sh..." >&2
         [ -x "$STARTER" ] || { echo "mybot: $STARTER missing or not executable" >&2; exit 1; }
         "$STARTER"
     fi
@@ -77,8 +88,14 @@ case "${1:-shell}" in
         printf 'container : %s\n' "$(docker inspect -f '{{.State.Status}}' "$NAME")"
         printf 'image     : %s\n' "$(docker inspect -f '{{.Config.Image}}' "$NAME")"
         printf 'devices   : %s\n' "$(docker inspect -f '{{len .HostConfig.Devices}}' "$NAME")"
-        printf 'udev mount: %s\n' \
-            "$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/run/udev"}}yes{{end}}{{end}}' "$NAME" | grep -q yes && echo yes || echo "NO -- camera will not enumerate")"
+        # No udev line. Both container scripts deliberately dropped /run/udev
+        # when libcamera and the CSI camera were retired; usb_cam walks the
+        # host's /sys directly and does not need it. The old check printed
+        # "camera will not enumerate" on a working robot, every time.
+        printf 'HEF mount : %s\n' \
+            "$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/usr/share/hailo-models"}}yes{{end}}{{end}}' "$NAME" | grep -q yes && echo yes || echo "NO -- no models, detection will fail")"
+        printf 'NPU       : %s\n' \
+            "$(docker inspect -f '{{range .HostConfig.Devices}}{{if eq .PathInContainer "/dev/hailo0"}}yes{{end}}{{end}}' "$NAME" | grep -q yes && echo yes || echo "NO -- /dev/hailo0 not passed")"
         printf 'init      : %s\n' "$(docker inspect -f '{{.HostConfig.Init}}' "$NAME")"
         if running; then
             echo "--- serial symlinks inside ---"
