@@ -12,6 +12,23 @@
     // size and Pi load are. GUI tools are added one at a time as they earn
     // their place; see the Dockerfile and ../RUNBOOK-jazzy-upgrade.md.
     //
+    // BUILDING HERE: mybot_gazebo does not resolve on the Pi. It exec_depends
+    // on ros_gz_sim and ros_gz_bridge, which this image deliberately does not
+    // carry -- ros_gz IS published for arm64, but running a simulator on the
+    // robot is a bad use of a Pi 5. The package still BUILDS (it is ament_cmake
+    // installing three directories, with no build-time deps); it is only
+    // dependency resolution that fails. So:
+    //
+    //   cd /workspace/ros2_ws
+    //   rosdep install --from-paths src --ignore-src -r -y \
+    //       --skip-keys "ros_gz_sim ros_gz_bridge"
+    //   colcon build --symlink-install
+    //
+    // Or drop an untracked COLCON_IGNORE in src/mybot_gazebo/ and skip it
+    // entirely; .gitignore still covers that. It used to carry a TRACKED one,
+    // which is what made the workspace build during the Jazzy port -- that came
+    // out when the Gazebo Classic -> Harmonic migration landed.
+    //
     // HOST: Raspberry Pi OS Trixie (Debian 13).
     //
     // PREFER `mybot` (or run-container.sh directly) over this file. The

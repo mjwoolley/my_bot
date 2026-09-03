@@ -58,7 +58,7 @@ and the distro bump. For reference, the commands that exercised them:
 
 ## Phase 1 [WORKSTATION] -- the base image
 
-In `~/robotics/docker/ros2-sim-dev` (was `ros2-humble-dev`):
+**DONE.** In `~/robotics/docker/ros2-sim-dev` (was `ros2-humble-dev`):
 
     FROM ros:humble-ros-base      ->  FROM ros:jazzy-ros-base
     ros-humble-*                  ->  ros-jazzy-*
@@ -71,28 +71,39 @@ Verified present for **both arm64 and amd64** on the Jazzy index:
 `ros-jazzy-rqt`, `ros-jazzy-rqt-common-plugins`.
 
 **`ros-jazzy-gazebo-ros-pkgs` does not exist, for any architecture.** There
-is no Classic in Jazzy. `Dockerfile.desktop` must replace it with
-`ros-jazzy-ros-gz` (Gazebo Harmonic). See Phase 3.
+is no Classic in Jazzy. `ros-jazzy-ros-gz` (Gazebo Harmonic) replaced it. Add
+`ros-jazzy-gz-tools-vendor` explicitly too: `ros_gz_sim`'s `gz_sim.launch.py`
+calls `shutil.which('gz')` and dies with a bare `NoneType` error if the CLI is
+absent.
 
-Everything else in `Dockerfile` is distro-agnostic: `python3-serial`,
-`python3-colcon-common-extensions`, the `ros` user at uid 1000, `entrypoint.sh`.
-Keep uid 1000 -- the Pi's `mike` is uid 1000 and the `/workspace` bind mount
-and the `/dev/video*` ACL both depend on the match.
+**One thing this section got wrong.** It claimed everything else in `Dockerfile`
+was distro-agnostic, including "the `ros` user at uid 1000". Not so: Ubuntu
+24.04 ships a default `ubuntu` user already sitting on uid/gid 1000, which Jammy
+did not, so `groupadd --gid 1000` fails the build outright. The squatter has to
+be evicted first -- `ros2-hailo-dev`'s Dockerfile had already hit this and its
+block was reused verbatim. Keeping uid 1000 is still right, for the reason
+given: the `/workspace` bind mount depends on the match.
 
-### The desktop split may be obsolete
+### The desktop split is gone
 
-`Dockerfile.desktop` exists solely because `ros-humble-desktop-full` and
-`ros-humble-gazebo-ros-pkgs` have no arm64 build. On Jazzy,
-**`ros-jazzy-desktop-full` and `ros-jazzy-ros-gz` are both published for
-arm64**, so that reasoning no longer holds and the two images could collapse
-into one.
+**DONE -- collapsed.** This section expected to keep the split and merely
+re-justify it. Both halves of the original reasoning turned out to be dead:
 
-Do not collapse them reflexively. The comment in `.devcontainer/pi/devcontainer.json`
-gives the other half of the reason: indexing ROS headers and carrying RViz and
-Gazebo is the heaviest thing you can ask a Pi to do. Availability is not the
-same as advisability. But the split should now be justified on **image size
-and Pi load**, not on "it does not exist for arm64", and the comments in both
-Dockerfiles and both devcontainer.json files say the latter.
+  - `ros-jazzy-desktop-full` and `ros-jazzy-ros-gz` are published for arm64, so
+    availability is no longer a constraint.
+  - More decisively, **nothing consumes a headless core image any more.** The Pi
+    moved to `ros2-hailo-dev`, which left the core image with exactly one
+    consumer: the desktop layer built on top of it. A split with one downstream
+    is not a split.
+
+So `Dockerfile.desktop` and the `BASE_IMAGE` arg are deleted, and CI dropped
+from four jobs to two -- no arch matrix, no manifest merge, no separate desktop
+job. The image is amd64 only, now by choice rather than by force.
+
+The Pi-load argument this section raised is still sound and is why there is no
+arm64 simulation image: carrying RViz and Gazebo and indexing ROS headers is the
+heaviest thing you can ask a Pi 5 to do. It just no longer describes a *split*
+within this repo -- it describes why the Pi has a different repo.
 
 ### Naming
 
